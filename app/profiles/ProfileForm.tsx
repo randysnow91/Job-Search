@@ -1,0 +1,226 @@
+'use client';
+
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabase';
+import { SearchProfile } from '@/lib/types';
+import { DEV_USER_ID } from '@/lib/dev';
+
+interface Props {
+  profile?: SearchProfile;
+}
+
+export default function ProfileForm({ profile }: Props) {
+  const router = useRouter();
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Form field state — for JSON fields we use plain text that we parse on save
+  const [name, setName] = useState(profile?.name ?? '');
+  const [positions, setPositions] = useState(profile?.positions.join('\n') ?? '');
+  const [industry, setIndustry] = useState(profile?.industry ?? '');
+  const [keywords, setKeywords] = useState(profile?.keywords.join(', ') ?? '');
+  const [locationMode, setLocationMode] = useState<'remote' | 'city' | 'both'>(
+    profile?.location.mode ?? 'remote'
+  );
+  const [city, setCity] = useState(profile?.location.city ?? '');
+  const [region, setRegion] = useState(profile?.location.region ?? '');
+  const [minPay, setMinPay] = useState(profile?.filters.min_pay?.toString() ?? '');
+  const [minJobs, setMinJobs] = useState(profile?.min_jobs.toString() ?? '10');
+  const [timeBudgetMinutes, setTimeBudgetMinutes] = useState(
+    Math.round((profile?.time_budget_seconds ?? 300) / 60).toString()
+  );
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+
+    const data = {
+      user_id: DEV_USER_ID,
+      name: name.trim(),
+      positions: positions.split('\n').map((p) => p.trim()).filter(Boolean),
+      industry: industry.trim(),
+      keywords: keywords.split(',').map((k) => k.trim()).filter(Boolean),
+      location: {
+        mode: locationMode,
+        ...(locationMode !== 'remote' && city ? { city: city.trim() } : {}),
+        ...(locationMode !== 'remote' && region ? { region: region.trim() } : {}),
+      },
+      filters: {
+        ...(minPay ? { min_pay: parseInt(minPay) } : {}),
+      },
+      min_jobs: parseInt(minJobs) || 10,
+      time_budget_seconds: (parseInt(timeBudgetMinutes) || 5) * 60,
+    };
+
+    const result = profile
+      ? await supabase.from('search_profiles').update(data).eq('id', profile.id).eq('user_id', DEV_USER_ID)
+      : await supabase.from('search_profiles').insert(data);
+
+    if (result.error) {
+      setError(result.error.message);
+      setSaving(false);
+    } else {
+      router.push('/profiles');
+      router.refresh();
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-6">
+      {error && (
+        <div className="rounded bg-red-50 p-3 text-sm text-red-700">{error}</div>
+      )}
+
+      <div>
+        <label className="block text-sm font-medium text-zinc-700">Profile name</label>
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          required
+          placeholder="e.g. Senior Backend Engineer"
+          className="mt-1 block w-full rounded border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none"
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-zinc-700">
+          Target positions{' '}
+          <span className="font-normal text-zinc-500">(one per line, top = most preferred)</span>
+        </label>
+        <textarea
+          value={positions}
+          onChange={(e) => setPositions(e.target.value)}
+          rows={4}
+          placeholder={"Senior Software Engineer\nStaff Engineer\nTech Lead"}
+          className="mt-1 block w-full rounded border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none"
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-zinc-700">Industry</label>
+        <input
+          type="text"
+          value={industry}
+          onChange={(e) => setIndustry(e.target.value)}
+          placeholder="e.g. Fintech, Healthcare, SaaS"
+          className="mt-1 block w-full rounded border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none"
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-zinc-700">
+          Keywords / skills{' '}
+          <span className="font-normal text-zinc-500">(comma-separated)</span>
+        </label>
+        <input
+          type="text"
+          value={keywords}
+          onChange={(e) => setKeywords(e.target.value)}
+          placeholder="TypeScript, Node.js, PostgreSQL, AWS"
+          className="mt-1 block w-full rounded border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none"
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-zinc-700">Location preference</label>
+        <div className="mt-2 space-y-2">
+          {(['remote', 'city', 'both'] as const).map((mode) => (
+            <label key={mode} className="flex items-center gap-2 text-sm">
+              <input
+                type="radio"
+                name="locationMode"
+                value={mode}
+                checked={locationMode === mode}
+                onChange={() => setLocationMode(mode)}
+              />
+              {mode === 'remote' ? 'Remote only' : mode === 'city' ? 'Specific city' : 'Remote or city'}
+            </label>
+          ))}
+        </div>
+        {locationMode !== 'remote' && (
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-zinc-700">City</label>
+              <input
+                type="text"
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+                placeholder="e.g. Chicago"
+                className="mt-1 block w-full rounded border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-zinc-700">Region / State</label>
+              <input
+                type="text"
+                value={region}
+                onChange={(e) => setRegion(e.target.value)}
+                placeholder="e.g. Illinois"
+                className="mt-1 block w-full rounded border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none"
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-zinc-700">
+          Minimum salary{' '}
+          <span className="font-normal text-zinc-500">(optional, $/year)</span>
+        </label>
+        <input
+          type="number"
+          value={minPay}
+          onChange={(e) => setMinPay(e.target.value)}
+          placeholder="e.g. 120000"
+          className="mt-1 block w-full rounded border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none"
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-zinc-700">Minimum jobs to find</label>
+          <input
+            type="number"
+            value={minJobs}
+            onChange={(e) => setMinJobs(e.target.value)}
+            min={1}
+            className="mt-1 block w-full rounded border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-zinc-700">
+            Search time budget (minutes)
+          </label>
+          <input
+            type="number"
+            value={timeBudgetMinutes}
+            onChange={(e) => setTimeBudgetMinutes(e.target.value)}
+            min={1}
+            className="mt-1 block w-full rounded border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none"
+          />
+        </div>
+      </div>
+
+      <div className="flex gap-3 pt-2">
+        <button
+          type="submit"
+          disabled={saving}
+          className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50"
+        >
+          {saving ? 'Saving…' : profile ? 'Save changes' : 'Create profile'}
+        </button>
+        <button
+          type="button"
+          onClick={() => router.push('/profiles')}
+          className="rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
