@@ -1,8 +1,13 @@
 # Claude Code Build Spec — Job Search Agent App
 
-**Status:** Draft v1.0 (build/implementation spec)
+**Status:** Draft v1.1 (build/implementation spec)
 **Derived from:** `job-search-app-PRD.md` (the product document — read it first)
 **Audience:** Claude Code (the coding agent) + the builder (product owner)
+
+| Version | Date       | Summary |
+|---------|------------|---------|
+| v1.0    | 2026-07-02 | Initial spec |
+| v1.1    | 2026-07-03 | Added VERIFICATION_ENABLED env flag to M2 definition-of-done; added V2 per-profile verification and V4-ish "Companies worth following" to §14 |
 
 > **How to use this document.**
 > The PRD says *what* and *why*. This spec says *how, with what, and in what order*.
@@ -265,6 +270,13 @@ on. A suggested first Claude Code prompt is given for each.
   Configurable time budget for cost control (§3.1). No dedup/exclusion/ranking yet — just
   prove it searches.
 - **Verify:** running a profile returns real, current postings with links.
+- > **Added in v1.1:** A `VERIFICATION_ENABLED=true` env flag (default `false`) gates
+  > URL-verification logic (the engine fetches each candidate posting to confirm it is
+  > still open before including it). The logic is present in the codebase but **off by
+  > default** so test runs stay within the time budget. Turning it on increases run time
+  > significantly. Verification present but off by default is part of M2's
+  > definition-of-done. Per-profile verification control and a UI toggle are **deferred
+  > to V2**.
 - **Prompt seed:** *"Add an API route that calls the Anthropic Messages API with the
   hosted web-search tool in a loop to find job postings matching these profile
   parameters, with a hard time budget. Stream progress. Return company, title, summary,
@@ -387,3 +399,11 @@ improve.
   resume-derived signals instead of (or alongside) typed parameters.
 - **Deeper search:** once the search runs in a Render background worker, raise the time budget back toward the
   original agent's depth.
+- **V2 per-profile verification:** the `VERIFICATION_ENABLED` flag moves out of env
+  config and into each `search_profiles` row, with a UI toggle on the profile editor.
+  Power users can opt into slower but more accurate results per search without affecting
+  other profiles.
+- **V4-ish (parked idea) — "Companies worth following":** when the engine finds employers
+  with roles that match the profile but are already closed, record those employers so the
+  user can monitor them for future openings. Keeps useful signal that would otherwise be
+  silently discarded.

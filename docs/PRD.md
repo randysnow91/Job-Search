@@ -1,8 +1,13 @@
 # Product Requirements Document — Job Search Agent App
 
-**Status:** Draft v1.0 (product definition)
+**Status:** Draft v1.1 (product definition)
 **Owner:** Product (builder / primary user)
 **Next document:** Claude Code build spec (derived from this PRD)
+
+| Version | Date       | Summary |
+|---------|------------|---------|
+| v1.0    | 2026-07-02 | Initial draft |
+| v1.1    | 2026-07-03 | Added §4.8 link verification (global env flag, off by default); updated §3 roadmap rows |
 
 > **How to read this doc.** This is the *product* document — it defines what the app
 > does and why, not how it's coded. Sections are tagged where useful:
@@ -77,8 +82,8 @@ retail-software Product Manager search, drawn from the original agent.
 
 | Release | Scope | Why this order |
 |---|---|---|
-| **V1** | On-demand search + saved **Search Profiles** | Fastest path to a working, demoable app. Persistence is already required by the exclusion list and saved reports, so saved profiles ride along for nearly free. |
-| **V2** | **Scheduling** (run a profile at a set time, e.g. 5–6am) + **run queue** (never run two at once) | The morning-reports-waiting feature. Bolts onto V1 because the profile already exists — scheduling just adds a *when*. This is where the real backend complexity lives. |
+| **V1** | On-demand search + saved **Search Profiles**; **link verification behind a global on/off flag** *(v1.1)* | Fastest path to a working, demoable app. Persistence is already required by the exclusion list and saved reports, so saved profiles ride along for nearly free. Verification exists but is off by default (a global env toggle), because it adds real time and cost. |
+| **V2** | **Scheduling** (run a profile at a set time, e.g. 5–6am) + **run queue** (never run two at once); **per-profile verification with UI** *(v1.1)* | The morning-reports-waiting feature. Bolts onto V1 because the profile already exists — scheduling just adds a *when*. This is where the real backend complexity lives. Verification graduates from a global flag to a per-profile toggle. |
 | **V3** | **Resume-based matching** — find roles that fit an uploaded resume instead of (or alongside) typed parameters | Highest-value, highest-complexity; best built once the core is proven. |
 
 Scope discipline note: keep multi-profile *management* trivial in V1 (a list you can
@@ -229,6 +234,43 @@ Binary build checks (distinct from KPIs in §1.5):
 - [ ] The user can **view and restore** excluded jobs.
 - [ ] Search Profiles can be created, saved, listed, picked, and deleted.
 - [ ] A run that misses its target within the budget says so explicitly.
+
+### 4.8 Link Verification — open/closed checking *(added in v1.1)*
+Early testing surfaced a real quality problem: many returned postings were already
+*closed*. It's disappointing to find what looks like a strong opportunity only to
+discover the role is gone. **Verification** addresses this by checking each found posting
+to confirm it's still open before it reaches the report.
+
+The catch — and the reason this is a *flagged* feature rather than always-on — is cost.
+Verification means fetching each posting's page, which is exactly the expensive,
+page-reading work the app is already built around (§7.1). In testing it added several
+minutes and meaningful API cost per run. So verification is a **second cost dial**
+alongside the time budget: more thorough results, or cheaper and faster runs.
+
+**V1 behavior [V1]:** verification exists but is controlled by a **single global on/off
+flag** (an environment setting, not a per-user control), **off by default**. This lets
+the builder turn it on for a thorough run before an important application, and off for
+cheap day-to-day scanning, without any UI. The verification logic is built in V1; only
+the *placement of the switch* changes later.
+
+**V2 behavior [V2]:** the flag moves into each **Search Profile** as a per-profile toggle
+with a UI, so a user's "cheap and fast" profile and "thorough" profile can differ. The
+toggle should show the tradeoff in plain language at the point of choice (roughly: *on =
+more thorough but slower and more expensive; off = cheaper and faster, but you'll see
+some closed listings*), so the user makes an informed cost decision rather than having it
+hidden.
+
+**Open questions (to settle in V2 design — deliberately deferred):**
+- **Hide vs. flag a closed job.** Recall-first (§4.4) argues against silently hiding
+  anything (a false "closed" reading would bury a real job), but showing known-dead
+  listings wastes the user's time. Undecided.
+- **"Closed" is fuzzy.** Detecting closed reliably across very different sites (expired
+  text, 404, silent redirect, a removed apply button) is a genuinely hard problem — a
+  cousin of job identity (§5), not a clean boolean.
+- **Future idea (V4-ish): "Companies worth following."** Rather than only removing closed
+  jobs, list the *employers* that had a matching-but-now-closed role in an appendix, so
+  the user can follow them for future openings — turning a dead posting into a lead. Noted
+  so it isn't lost; not to be built early.
 
 ---
 
