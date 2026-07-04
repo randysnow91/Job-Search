@@ -1,6 +1,6 @@
 # Claude Code Build Spec — Job Search Agent App
 
-**Status:** Draft v1.2 (build/implementation spec)
+**Status:** Draft v1.3 (build/implementation spec)
 **Derived from:** `job-search-app-PRD.md` (the product document — read it first)
 **Audience:** Claude Code (the coding agent) + the builder (product owner)
 
@@ -9,6 +9,7 @@
 | v1.0    | 2026-07-02 | Initial spec |
 | v1.1    | 2026-07-03 | Added VERIFICATION_ENABLED env flag to M2 definition-of-done; added V2 per-profile verification and V4-ish "Companies worth following" to §14 |
 | v1.2    | 2026-07-04 | Removed minimum-jobs target; Search Time Budget is the primary limit with an optional Max Jobs ceiling (whichever comes first); results now captured incrementally with partial-results-on-stop. |
+| v1.3    | 2026-07-04 | Corrected search-model guidance: Opus 4.8 is the known-good default (Sonnet 5 did not complete a 120s run; Haiku errored); root cause not yet determined. Documented that true partial-results-on-timeout for a single long call requires streaming (deferred past M2). Both stopping conditions verified in testing. PRD unaffected (stays v1.2). |
 
 > **How to use this document.**
 > The PRD says *what* and *why*. This spec says *how, with what, and in what order*.
@@ -36,7 +37,7 @@ any of them — the reasoning is here so you know what you'd be trading.
 | **Hosting** | **Render** (Hobby workspace + one **Starter** web-service instance, ~$7/mo) | Deploys from GitHub → a public link (a hard PRD requirement). Unlike serverless hosts, Render runs a **persistent server** with request timeouts up to ~100 min and **first-class background workers + cron** — so the long-running search and later scheduling are native, not workarounds. A paid Starter instance also keeps the demo **always warm** (free instances cold-start ~30–60s, which kills a portfolio demo). See §3.1. |
 | **Database + Auth** | **Supabase** | Managed Postgres + built-in auth + a friendly dashboard, generous free tier. Gives per-user data scoping and sign-in without building either from scratch. |
 | **Search engine** | **Anthropic Messages API + hosted web-search tool**, lightweight agent loop | Pure HTTP calls — deploys anywhere, no bundled binary, no scraping infrastructure. See §3.2 for why not the Agent SDK. |
-| **Default model** | **Claude Sonnet 5** (`claude-sonnet-5`) | Balance of reasoning and cost for agentic search. Budget: **Haiku 4.5**. Premium: **Opus 4.8**. Make it configurable. |
+| **Search model** | **Claude Opus 4.8** (`claude-opus-4-8`), via `SEARCH_MODEL` | Empirically required for the search engine: in testing, Opus 4.8 reliably **completes** an agentic search run within the time budget; **Sonnet 5 did not complete a run within a 120s budget**, and **Haiku 4.5 errored** on this workload. Configurable, but Opus is the known-good default for search. Cheaper models were not viable substitutes for *this* task (see §10). |
 | **Long-running / scheduled work** | **Render background workers + cron** (native) | For deeper V1 runs and V2 scheduling. Because Render supports these as first-class service types, no third-party durable-execution service is needed (see §3.1, §14). |
 
 **Language:** TypeScript throughout (type safety helps Claude Code produce correct code
@@ -178,6 +179,18 @@ A single run, server-side, executes these steps:
 8. **Persist & return.** Write the `report` + `results`; stream progress and the final
    report to the browser.
 
+> **Known limitation (as of v1.3) — partial results depend on the model
+> completing.** Results are captured after each *completed* model response
+> (including across `pause_turn`/continue iterations). But if a run is a **single
+> long API call that never completes within the budget**, the abort fires with
+> nothing captured — returning zero, the exact failure PRD §4.2 says must not
+> happen. This is currently avoided *in practice* by using Opus 4.8 (which
+> completes within budget); it is **not yet structurally fixed**. True
+> partial-result recovery for an incomplete single call requires **streaming**
+> (capturing results as they stream in), deferred past M2 (see §14). Watch for
+> this returning if a larger time budget, verification on, or a harder search ever
+> pushes even Opus past the budget without completing.
+
 **Output contract per result** (drives the UI and the acceptance checks):
 company · title (displayed as *company + title*) · why-line · salary-or-"No salary
 listed" · location_display (remote **and** proximity when both true) · source · link.
@@ -275,6 +288,7 @@ on. A suggested first Claude Code prompt is given for each.
   > definition-of-done. Per-profile verification control and a UI toggle are **deferred
   > to V2**.
 - > **Added in v1.2:** Results are captured incrementally and a run that hits its time/max limit returns partial results with a stop reason — never zero.
+- > **Added in v1.3:** The "never returns zero" behavior currently holds only because Opus 4.8 completes within budget; the single-long-call case is a known limitation (see §5 callout). **Verified working:** a 2-min run with no max returned 6 jobs (`stopped_reason: time_budget`); a 10-min run with `max_jobs=3` stopped in ~1 min with 3 jobs (`stopped_reason: max_reached`). Both stopping conditions confirmed.
 - **Prompt seed:** *"Add an API route that calls the Anthropic Messages API with the
   hosted web-search tool in a loop to find job postings matching these profile
   parameters, with a hard time budget. Stream progress. Return company, title, summary,
@@ -338,8 +352,15 @@ ships and is on your resume.
 
 **The search's API cost (what *users* pay):**
 - **BYO key:** each user pays their own Claude usage (PRD §7.1). Keeps that cost off you.
-- **Default model Sonnet 5;** expose a setting for Haiku 4.5 (budget) / Opus 4.8
-  (premium).
+- **Model: Opus 4.8 is the known-good default for the search engine** (env
+  `SEARCH_MODEL`). Testing finding: Opus 4.8 completes agentic search runs within
+  the time budget; **Sonnet 5 did not complete a single run within a 120s
+  budget**, and **Haiku 4.5 errored** on this workload. Whether Sonnet is
+  genuinely slower or was simply searching more deeply (and so not reaching
+  completion) is **not yet determined** — the proven fact is only that Opus
+  completes within budget and the cheaper models did not. Cost consequence: the
+  cheap-model testing path assumed earlier is not available; test on Opus with a
+  short time budget and verification off.
 - **Enable prompt caching** to cut repeated-context cost.
 - **The time budget and the optional Max Jobs ceiling are the cost caps** — together they control how much a run spends. Source discovery (§5.2) is the dominant cost; that's intentional.
 
@@ -404,3 +425,8 @@ improve.
   with roles that match the profile but are already closed, record those employers so the
   user can monitor them for future openings. Keeps useful signal that would otherwise be
   silently discarded.
+- **Streaming for true partial results:** capture results as they stream from the
+  model, so a run cut off mid-response still returns what it found — regardless of
+  model or whether the call completed. Structurally fixes the v1.3 known
+  limitation in §5 (currently only avoided by using a model that completes within
+  budget). Deferred past M2.

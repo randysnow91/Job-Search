@@ -73,6 +73,12 @@ export default function ProfilesPage() {
                 </div>
                 <div className="flex shrink-0 gap-3">
                   <Link
+                    href={`/profiles/${profile.id}/run`}
+                    className="rounded bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700"
+                  >
+                    Run search
+                  </Link>
+                  <Link
                     href={`/profiles/${profile.id}/edit`}
                     className="text-sm text-zinc-600 underline hover:text-zinc-900"
                   >

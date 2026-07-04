@@ -26,7 +26,7 @@ export default function ProfileForm({ profile }: Props) {
   const [city, setCity] = useState(profile?.location.city ?? '');
   const [region, setRegion] = useState(profile?.location.region ?? '');
   const [minPay, setMinPay] = useState(profile?.filters.min_pay?.toString() ?? '');
-  const [minJobs, setMinJobs] = useState(profile?.min_jobs.toString() ?? '10');
+  const [maxJobs, setMaxJobs] = useState(profile?.max_jobs?.toString() ?? '');
   const [timeBudgetMinutes, setTimeBudgetMinutes] = useState(
     Math.round((profile?.time_budget_seconds ?? 300) / 60).toString()
   );
@@ -50,7 +50,7 @@ export default function ProfileForm({ profile }: Props) {
       filters: {
         ...(minPay ? { min_pay: parseInt(minPay) } : {}),
       },
-      min_jobs: parseInt(minJobs) || 10,
+      max_jobs: maxJobs.trim() ? parseInt(maxJobs) : null,
       time_budget_seconds: (parseInt(timeBudgetMinutes) || 5) * 60,
     };
 
@@ -180,29 +180,38 @@ export default function ProfileForm({ profile }: Props) {
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-zinc-700">Minimum jobs to find</label>
-          <input
-            type="number"
-            value={minJobs}
-            onChange={(e) => setMinJobs(e.target.value)}
-            min={1}
-            className="mt-1 block w-full rounded border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-zinc-700">
-            Search time budget (minutes)
-          </label>
-          <input
-            type="number"
-            value={timeBudgetMinutes}
-            onChange={(e) => setTimeBudgetMinutes(e.target.value)}
-            min={1}
-            className="mt-1 block w-full rounded border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none"
-          />
-        </div>
+      <div>
+        <label className="block text-sm font-medium text-zinc-700">
+          Search Time Budget (minutes)
+        </label>
+        <input
+          type="number"
+          value={timeBudgetMinutes}
+          onChange={(e) => setTimeBudgetMinutes(e.target.value)}
+          min={1}
+          className="mt-1 block w-full rounded border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none"
+        />
+        <p className="mt-1 text-xs text-zinc-500">
+          How long to search. More time finds more jobs but costs more — most of your cost comes from this setting.
+        </p>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-zinc-700">
+          Max Jobs to Find{' '}
+          <span className="font-normal text-zinc-500">(optional)</span>
+        </label>
+        <input
+          type="number"
+          value={maxJobs}
+          onChange={(e) => setMaxJobs(e.target.value)}
+          min={1}
+          placeholder="Leave blank to search the whole time budget"
+          className="mt-1 block w-full rounded border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none"
+        />
+        <p className="mt-1 text-xs text-zinc-500">
+          A stopping point. If you only have time to review, say, 10 jobs a day, set that here and the search stops once it finds them — no sense paying to find more than you&apos;ll read. Leave blank to search the whole time budget.
+        </p>
       </div>
 
       <div className="flex gap-3 pt-2">
