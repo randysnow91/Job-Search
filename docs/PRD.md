@@ -1,6 +1,6 @@
 # Product Requirements Document — Job Search Agent App
 
-**Status:** Draft v1.1 (product definition)
+**Status:** Draft v1.2 (product definition)
 **Owner:** Product (builder / primary user)
 **Next document:** Claude Code build spec (derived from this PRD)
 
@@ -8,6 +8,7 @@
 |---------|------------|---------|
 | v1.0    | 2026-07-02 | Initial draft |
 | v1.1    | 2026-07-03 | Added §4.8 link verification (global env flag, off by default); updated §3 roadmap rows |
+| v1.2    | 2026-07-04 | Removed minimum-jobs target; Search Time Budget is the primary limit with an optional Max Jobs ceiling (whichever comes first); results now captured incrementally with partial-results-on-stop. |
 
 > **How to read this doc.** This is the *product* document — it defines what the app
 > does and why, not how it's coded. Sections are tagged where useful:
@@ -109,9 +110,13 @@ Each profile stores:
   ranking signal; more distinct matches rank higher; none is required (see §4.4).
 - **Location** — a specific city, remote, or both.
 - **Filters** — e.g. minimum pay.
-- **Run controls** — minimum jobs to find, and a time/effort budget per run.
+- **Run controls** — a **Search Time Budget** (how long to search) and an optional **Max Jobs to Find** (a ceiling, not a target). See the user-facing descriptions below.
 
 The user picks a profile, hits **Run**, and gets a report. No re-entering parameters.
+
+**Setting labels & descriptions (user-facing copy).** Both controls surface the cost tradeoff at the point of decision, so the user chooses knowingly:
+- **Search Time Budget (minutes)** — *"How long to search. More time finds more jobs but costs more — most of your cost comes from this setting."*
+- **Max Jobs to Find (optional)** — *"A stopping point. If you only have time to review, say, 10 jobs a day, set that here and the search stops once it finds them — no sense paying to find more than you'll read. Leave blank to search the whole time budget."*
 
 ### 4.2 Running a Search [V1]
 The engine is an **AI agent performing live web search and reading pages** — the
@@ -122,10 +127,15 @@ approach proven by the original agent. On each run it:
 3. Deduplicates results (see §5).
 4. Excludes anything on the exclusion list, including the same role appearing under
    slightly different wording across sources.
-5. Keeps searching until a **stopping condition** is reached: it has found the target
-   number of qualifying new jobs, **or** it has spent the time/effort budget.
-6. If it can't reach the target within the budget, it returns the best matches found
-   and **says so explicitly** ("stopped after the time-budgeted effort; found X").
+5. Keeps searching until a **stopping condition** is reached: the **time budget**
+   is spent, **or** the optional **Max Jobs** ceiling is reached — **whichever
+   comes first.** There is no minimum-jobs target; the clock (and optional
+   ceiling) are the only limits.
+6. **Results are captured incrementally** as they are found — never only at the
+   end. When a stopping condition is reached, the run returns **whatever
+   qualifying jobs it has collected so far** and states plainly why it stopped
+   (time budget vs. max reached). A short budget yields fewer results, **never
+   zero.**
 
 ### 4.3 Source Discovery [V1] — *the differentiator*
 The system must not just query job boards. It must **reason about who the relevant
@@ -188,9 +198,7 @@ skills list works.)
 > for simplicity and to preserve recall.
 
 ### 4.5 The Report [V1]
-Starts with a short **overview**: how many new matches were found, whether the run hit
-its target or stopped on the time budget, and notable patterns (repeated employers,
-strong domain matches).
+Starts with a short **overview**: how many new matches were found, why the run stopped (time budget spent, or Max Jobs ceiling reached), and notable patterns (repeated employers, strong domain matches).
 
 Then jobs in **ranked order**, each with:
 - **Title = company name + position title.**
@@ -233,7 +241,7 @@ Binary build checks (distinct from KPIs in §1.5):
 - [ ] The user can **add a job to the exclusion list** (applied or dismissed).
 - [ ] The user can **view and restore** excluded jobs.
 - [ ] Search Profiles can be created, saved, listed, picked, and deleted.
-- [ ] A run that misses its target within the budget says so explicitly.
+- [ ] Results are captured incrementally; if the run hits its time budget (or Max Jobs ceiling) it returns what it found so far and states why it stopped — it never returns zero merely because it didn't finish.
 
 ### 4.8 Link Verification — open/closed checking *(added in v1.1)*
 Early testing surfaced a real quality problem: many returned postings were already

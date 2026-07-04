@@ -1,6 +1,6 @@
 # Claude Code Build Spec — Job Search Agent App
 
-**Status:** Draft v1.1 (build/implementation spec)
+**Status:** Draft v1.2 (build/implementation spec)
 **Derived from:** `job-search-app-PRD.md` (the product document — read it first)
 **Audience:** Claude Code (the coding agent) + the builder (product owner)
 
@@ -8,6 +8,7 @@
 |---------|------------|---------|
 | v1.0    | 2026-07-02 | Initial spec |
 | v1.1    | 2026-07-03 | Added VERIFICATION_ENABLED env flag to M2 definition-of-done; added V2 per-profile verification and V4-ish "Companies worth following" to §14 |
+| v1.2    | 2026-07-04 | Removed minimum-jobs target; Search Time Budget is the primary limit with an optional Max Jobs ceiling (whichever comes first); results now captured incrementally with partial-results-on-stop. |
 
 > **How to use this document.**
 > The PRD says *what* and *why*. This spec says *how, with what, and in what order*.
@@ -119,14 +120,14 @@ multi-user from day one, even while V1 is used by one person.
 - `keywords` (JSON: a flat list of skill terms — see PRD §4.4; no must/nice tiers)
 - `location` (JSON: { mode: "remote" | "city" | "both", city?, region? })
 - `filters` (JSON: e.g. { min_pay })
-- `min_jobs` (int), `time_budget_seconds` (int)
+- `time_budget_seconds` (int), `max_jobs` (int, **nullable/optional** — a ceiling, not a target)
 - `created_at`, `updated_at`
 
 **`reports`**
 - `id`, `profile_id`, `user_id`
 - `run_started_at`, `run_finished_at`
 - `overview` (text — the summary header)
-- `stopped_reason` ("target_met" | "time_budget")
+- `stopped_reason` ("time_budget" | "max_reached")
 - `jobs_found` (int)
 
 **`results`** (one row per job in a report)
@@ -160,10 +161,7 @@ A single run, server-side, executes these steps:
    regional employers, not just the obvious big names** — then search those directly, in
    addition to the major boards. Without the "past the obvious" instruction the model
    defaults to the big names.
-3. **Agent loop.** Using the Messages API with the hosted web-search tool, iterate:
-   search → read promising results → gather candidate postings. Continue until a
-   **stopping condition**: `min_jobs` qualifying new jobs found, **or** `time_budget`
-   reached. If the budget is hit first, the report must **say so explicitly**.
+3. **Agent loop.** Using the Messages API with the hosted web-search tool, iterate: search → read promising results → gather candidate postings. **Capture each qualifying job to the report as it is found — not only at the end.** Continue until a **stopping condition**: `time_budget_seconds` spent, **or** the optional `max_jobs` ceiling reached — **whichever comes first** (there is no minimum-jobs target). On stop, return **whatever has been collected so far** and set `stopped_reason` accordingly. A run that stops early must **never return zero merely because a response was cut off mid-flight** — partial results are expected behavior, not an error.
 4. **Deduplicate** candidates against each other and compute each one's `job_identity`
    (§11).
 5. **Apply exclusions.** Drop any candidate whose `job_identity` matches the exclusion
@@ -235,8 +233,7 @@ Keep it minimal — enough to demo, no more.
 1. **Sign in** (Supabase Auth — email or Google).
 2. **API key entry** — a small settings field; explains it's never stored.
 3. **Profiles list** — create / pick / delete. Deliberately simple (PRD scope guard).
-4. **Profile editor** — the parameter form (positions ranked, industry, keywords,
-   location, filters, min jobs, time budget).
+4. **Profile editor** — the parameter form (positions ranked, industry, keywords, location, filters, time budget, optional max-jobs ceiling). The time-budget and max-jobs fields show the user-facing cost descriptions from PRD §4.1.
 5. **Run + report view** — click Run, watch progress, see ranked results with the "why"
    line; per-result **Save** / **Dismiss (applied|not interested)**.
 6. **Saved reports** — review saved results later.
@@ -277,6 +274,7 @@ on. A suggested first Claude Code prompt is given for each.
   > significantly. Verification present but off by default is part of M2's
   > definition-of-done. Per-profile verification control and a UI toggle are **deferred
   > to V2**.
+- > **Added in v1.2:** Results are captured incrementally and a run that hits its time/max limit returns partial results with a stop reason — never zero.
 - **Prompt seed:** *"Add an API route that calls the Anthropic Messages API with the
   hosted web-search tool in a loop to find job postings matching these profile
   parameters, with a hard time budget. Stream progress. Return company, title, summary,
@@ -343,8 +341,7 @@ ships and is on your resume.
 - **Default model Sonnet 5;** expose a setting for Haiku 4.5 (budget) / Opus 4.8
   (premium).
 - **Enable prompt caching** to cut repeated-context cost.
-- **The time budget is the cost cap** — the primary control on how much a run spends.
-  Source discovery (§5.2) is the dominant cost; that's intentional.
+- **The time budget and the optional Max Jobs ceiling are the cost caps** — together they control how much a run spends. Source discovery (§5.2) is the dominant cost; that's intentional.
 
 ---
 
