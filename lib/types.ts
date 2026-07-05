@@ -12,6 +12,35 @@ export interface SearchOutput {
   stoppedReason: 'time_budget' | 'max_reached' | 'completed';
 }
 
+export interface Report {
+  id: string;
+  profile_id: string;
+  user_id: string;
+  run_started_at: string;
+  run_finished_at: string;
+  overview: string;
+  stopped_reason: string;
+  jobs_found: number;
+  created_at: string;
+}
+
+export interface ReportResult {
+  id: string;
+  report_id: string;
+  user_id: string;
+  company: string;
+  title: string;
+  why: string;
+  salary: string | null;
+  location_display: string;
+  source: string;
+  link: string;
+  rank: number;
+  job_identity: string;
+  status: string;
+  created_at: string;
+}
+
 export interface SearchProfile {
   id: string;
   user_id: string;
