@@ -1,6 +1,6 @@
 # Claude Code Build Spec — Job Search Agent App
 
-**Status:** Draft v1.3 (build/implementation spec)
+**Status:** Draft v1.4 (build/implementation spec)
 **Derived from:** `job-search-app-PRD.md` (the product document — read it first)
 **Audience:** Claude Code (the coding agent) + the builder (product owner)
 
@@ -10,6 +10,7 @@
 | v1.1    | 2026-07-03 | Added VERIFICATION_ENABLED env flag to M2 definition-of-done; added V2 per-profile verification and V4-ish "Companies worth following" to §14 |
 | v1.2    | 2026-07-04 | Removed minimum-jobs target; Search Time Budget is the primary limit with an optional Max Jobs ceiling (whichever comes first); results now captured incrementally with partial-results-on-stop. |
 | v1.3    | 2026-07-04 | Corrected search-model guidance: Opus 4.8 is the known-good default (Sonnet 5 did not complete a 120s run; Haiku errored); root cause not yet determined. Documented that true partial-results-on-timeout for a single long call requires streaming (deferred past M2). Both stopping conditions verified in testing. PRD unaffected (stays v1.2). |
+| v1.4    | 2026-07-06 | M4 dedup ships with steps 1–2 (exact URL + normalized company/title/location key); step 3 (model judgment for near-matches) deferred pending testing. Documented recall-first "when in doubt keep both" bias and the step-2 same-title over-merge blind spot. PRD unaffected. |
 
 > **How to use this document.**
 > The PRD says *what* and *why*. This spec says *how, with what, and in what order*.
@@ -300,17 +301,21 @@ on. A suggested first Claude Code prompt is given for each.
   link** contract.
 - **Verify:** every acceptance item in PRD §4.7 that concerns report *content* passes.
 
-### M4 — Global exclusion list
+### M4 — Dedup / job identity
+- **Build:** compute `job_identity` and dedup within a run (start simple — §11).
+  Steps 1 and 2 of §11 are implemented (URL dedup + normalized company+title key).
+  Step 3 (near-match model judgment) is deferred — a placeholder comment marks
+  where it belongs in `lib/dedup.ts`.
+- **Verify:** the same role from two sources appears once in the report; a genuinely
+  different role at the same company (e.g. different seniority) is not wrongly merged;
+  `job_identity` values are visible on saved rows in Supabase.
+
+### M5 — Global exclusion list
 - **Build:** `exclusions` table; **Save** / **Dismiss** actions; the engine reads
-  exclusions first and drops matches; the Exclusions view with **restore**.
+  exclusions first and drops matches (using `job_identity` from M4); the Exclusions
+  view with **restore**.
 - **Verify:** dismiss a job, re-run → it does not reappear; restore it → it can appear
   again.
-
-### M5 — Dedup / job identity
-- **Build:** compute `job_identity` and dedup within a run and against exclusions
-  (start simple — §11).
-- **Verify:** the same role from two sources appears once; an excluded role stays gone
-  even when reworded.
 
 ### M6 — Matching & ranking (recall-first)
 - **Build:** the §5.6 gates + judgment ranking + the **"why" line**.
@@ -370,12 +375,35 @@ ships and is on your resume.
 The exclusion feature only works if the app recognizes the *same* role across different
 sources and searches (PRD §5).
 
-**V1 approach (start simple):**
-1. Normalize `company` + `title` + location into a canonical key.
-2. Treat identical posting `link`/URL as a definite match.
-3. For near-matches (same role, different wording), use a lightweight **model judgment**
-   check ("are these the same opening?") — cheap because it runs only on close
-   candidates.
+**V1 approach (start simple — recall-first):** the intended approach has three
+steps, in increasing order of confidence and complexity:
+1. Treat an identical posting `link`/URL as a definite match.
+2. Normalize `company` + `title` + location into a canonical key; identical keys
+   merge.
+3. For near-matches (same company, similar-but-not-identical title or wording), a
+   lightweight **model judgment** check ("are these the same opening?"), run only
+   on close candidates.
+
+**Shipped in M4 (v1.4): steps 1–2 only. Step 3 is deferred** until testing shows
+it's needed — per start-simple, we don't add the extra API call and fuzzy matching
+before there's evidence we need them. Leave a marked seam in the code where step 3
+will slot in (a comment, like the existing placeholder markers).
+
+**Recall-first bias — when in doubt, keep both.** Dedup's worst failure is
+*over-merging* (wrongly hiding a real job as a "duplicate"), which violates
+recall-first. Matching is therefore conservative: an uncertain match keeps both
+postings. An occasional visible duplicate is acceptable; a silently-hidden real
+job is not. When step 3 is eventually built, its default must be "if ambiguous,
+keep both."
+
+**Known blind spot (accepted for V1):** step 2 merges any two postings with the
+same normalized company + title. Usually correct, but it *can* over-merge two
+genuinely different same-titled roles at one large employer (e.g. two distinct
+"Software Engineer" openings on different teams) — the second would be hidden.
+Accepted as a V1 tradeoff (the alternative creates more duplicate noise); watch for
+it in testing. Deferring step 3 also means some human-obvious near-duplicates
+("Acme Corp" vs "Acme, Inc." with slightly different titles) will slip through and
+appear twice — expected behavior, not a bug.
 
 Store the result as `job_identity`. **Expect to iterate** — this is the app's genuine
 technical risk. Don't over-engineer it in V1; do make it its own step so it's easy to

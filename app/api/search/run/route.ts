@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { DEV_USER_ID } from '@/lib/dev';
 import { runSearch } from '@/lib/search';
+import { deduplicateResults } from '@/lib/dedup';
 import type { SearchProfile, JobResult } from '@/lib/types';
 
 function buildOverview(profile: SearchProfile, jobCount: number, stoppedReason: string): string {
@@ -63,7 +64,9 @@ export async function POST(request: NextRequest) {
     const searchResult = await runSearch(profile, apiKey);
     const finishedAt = new Date();
 
-    const overview = buildOverview(profile, searchResult.results.length, searchResult.stoppedReason);
+    const dedupedResults = deduplicateResults(searchResult.results);
+
+    const overview = buildOverview(profile, dedupedResults.length, searchResult.stoppedReason);
     const locationDisplay = buildLocationDisplay(profile);
 
     // Save the report row first.
@@ -76,7 +79,7 @@ export async function POST(request: NextRequest) {
         run_finished_at: finishedAt.toISOString(),
         overview,
         stopped_reason: searchResult.stoppedReason,
-        jobs_found: searchResult.results.length,
+        jobs_found: dedupedResults.length,
       })
       .select('id')
       .single();
@@ -87,8 +90,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Save one results row per job.
-    if (searchResult.results.length > 0) {
-      const rows = searchResult.results.map((job: JobResult, index: number) => ({
+    if (dedupedResults.length > 0) {
+      const rows = dedupedResults.map((job: JobResult, index: number) => ({
         report_id: report.id,
         user_id: DEV_USER_ID,
         company: job.company,
@@ -99,7 +102,7 @@ export async function POST(request: NextRequest) {
         source: job.source,
         link: job.link,
         rank: index + 1,
-        job_identity: job.link,    // M5 replaces with proper dedup key
+        job_identity: job.job_identity ?? job.link,
         status: 'in_report',
       }));
 

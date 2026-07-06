@@ -5,6 +5,7 @@ export interface JobResult {
   salary: string | null;
   source: string;
   link: string;
+  job_identity?: string; // set by deduplicateResults() before results are saved
 }
 
 export interface SearchOutput {
