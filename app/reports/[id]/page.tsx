@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase';
 import { DEV_USER_ID } from '@/lib/dev';
 import Link from 'next/link';
 import type { ReportResult } from '@/lib/types';
+import ResultCard from './ResultCard';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,6 +26,15 @@ export default async function ReportPage({
     .eq('report_id', id)
     .eq('user_id', DEV_USER_ID)
     .order('rank', { ascending: true });
+
+  const { data: exclusionRows } = await supabase
+    .from('exclusions')
+    .select('id, job_identity, reason')
+    .eq('user_id', DEV_USER_ID);
+
+  const excludedMap = new Map<string, { reason: string; exclusionId: string }>(
+    (exclusionRows ?? []).map((e) => [e.job_identity, { reason: e.reason, exclusionId: e.id }])
+  );
 
   if (!report) {
     return (
@@ -98,38 +108,13 @@ export default async function ReportPage({
       ) : (
         <ul className="space-y-4">
           {(results as ReportResult[]).map((result) => (
-            <li key={result.id} className="rounded border border-zinc-200 p-4">
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                  {/* Company + Title */}
-                  <p className="font-medium text-zinc-900">
-                    {result.company} — {result.title}
-                  </p>
-
-                  {/* Why / description */}
-                  {result.why && (
-                    <p className="mt-1 text-sm text-zinc-600">{result.why}</p>
-                  )}
-
-                  {/* Salary · Location · Source */}
-                  <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-zinc-400">
-                    <span>{result.salary ?? 'No salary listed'}</span>
-                    {result.location_display && <span>{result.location_display}</span>}
-                    {result.source && <span>{result.source}</span>}
-                  </div>
-                </div>
-
-                {/* View link */}
-                <a
-                  href={result.link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="shrink-0 rounded border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
-                >
-                  View →
-                </a>
-              </div>
-            </li>
+            <ResultCard
+              key={result.id}
+              result={result}
+              initialExcluded={excludedMap.has(result.job_identity)}
+              initialReason={excludedMap.get(result.job_identity)?.reason}
+              initialExclusionId={excludedMap.get(result.job_identity)?.exclusionId}
+            />
           ))}
         </ul>
       )}

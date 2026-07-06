@@ -43,6 +43,9 @@ export default function ProfilesPage() {
           <Link href="/reports" className="text-sm text-zinc-500 hover:text-zinc-900">
             All reports
           </Link>
+          <Link href="/exclusions" className="text-sm text-zinc-500 hover:text-zinc-900">
+            Exclusions
+          </Link>
           <Link
             href="/profiles/new"
             className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700"

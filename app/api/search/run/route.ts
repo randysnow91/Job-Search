@@ -58,6 +58,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
   }
 
+  // Load exclusions before the search (spec §5 step 1).
+  const { data: exclusionRows } = await supabase
+    .from('exclusions')
+    .select('job_identity')
+    .eq('user_id', DEV_USER_ID);
+
+  const excludedIdentities = new Set(
+    (exclusionRows ?? []).map((e: { job_identity: string }) => e.job_identity)
+  );
+
   const startedAt = new Date();
 
   try {
@@ -66,7 +76,19 @@ export async function POST(request: NextRequest) {
 
     const dedupedResults = deduplicateResults(searchResult.results);
 
-    const overview = buildOverview(profile, dedupedResults.length, searchResult.stoppedReason);
+    // Apply exclusions (spec §5 step 5) — drop any result whose job_identity
+    // is on the user's exclusion list.
+    const filteredResults = dedupedResults.filter(
+      (job) => !excludedIdentities.has(job.job_identity ?? '')
+    );
+
+    if (dedupedResults.length !== filteredResults.length) {
+      console.log(
+        `[search/run] excluded ${dedupedResults.length - filteredResults.length} result(s) matching exclusion list`
+      );
+    }
+
+    const overview = buildOverview(profile, filteredResults.length, searchResult.stoppedReason);
     const locationDisplay = buildLocationDisplay(profile);
 
     // Save the report row first.
@@ -79,7 +101,7 @@ export async function POST(request: NextRequest) {
         run_finished_at: finishedAt.toISOString(),
         overview,
         stopped_reason: searchResult.stoppedReason,
-        jobs_found: dedupedResults.length,
+        jobs_found: filteredResults.length,
       })
       .select('id')
       .single();
@@ -90,8 +112,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Save one results row per job.
-    if (dedupedResults.length > 0) {
-      const rows = dedupedResults.map((job: JobResult, index: number) => ({
+    if (filteredResults.length > 0) {
+      const rows = filteredResults.map((job: JobResult, index: number) => ({
         report_id: report.id,
         user_id: DEV_USER_ID,
         company: job.company,

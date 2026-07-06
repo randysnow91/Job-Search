@@ -42,6 +42,16 @@ export interface ReportResult {
   created_at: string;
 }
 
+export interface Exclusion {
+  id: string;
+  user_id: string;
+  job_identity: string;
+  company: string;
+  title: string;
+  reason: string;
+  created_at: string;
+}
+
 export interface SearchProfile {
   id: string;
   user_id: string;

@@ -1,6 +1,6 @@
 # Claude Code Build Spec — Job Search Agent App
 
-**Status:** Draft v1.4 (build/implementation spec)
+**Status:** Draft v1.5 (build/implementation spec)
 **Derived from:** `job-search-app-PRD.md` (the product document — read it first)
 **Audience:** Claude Code (the coding agent) + the builder (product owner)
 
@@ -11,6 +11,7 @@
 | v1.2    | 2026-07-04 | Removed minimum-jobs target; Search Time Budget is the primary limit with an optional Max Jobs ceiling (whichever comes first); results now captured incrementally with partial-results-on-stop. |
 | v1.3    | 2026-07-04 | Corrected search-model guidance: Opus 4.8 is the known-good default (Sonnet 5 did not complete a 120s run; Haiku errored); root cause not yet determined. Documented that true partial-results-on-timeout for a single long call requires streaming (deferred past M2). Both stopping conditions verified in testing. PRD unaffected (stays v1.2). |
 | v1.4    | 2026-07-06 | M4 dedup ships with steps 1–2 (exact URL + normalized company/title/location key); step 3 (model judgment for near-matches) deferred pending testing. Documented recall-first "when in doubt keep both" bias and the step-2 same-title over-merge blind spot. PRD unaffected. |
+| v1.5    | 2026-07-06 | Report-view exclusion behavior: dismissing/applying grays the result in place (not removed), keeping View and Restore links active; Restore fully un-excludes. Both reason tags (applied/dismissed) surfaced in the report UI. Verified against a live run. |
 
 > **How to use this document.**
 > The PRD says *what* and *why*. This spec says *how, with what, and in what order*.
@@ -214,7 +215,7 @@ LinkedIn). Public search results and companies' own career pages are the right s
 - `GET /api/reports/:id` — one report with results.
 - `POST /api/results/:id/save` — mark a result saved.
 - `POST /api/results/:id/exclude` — body `{ reason }`. Add to global exclusions
-  (applied | dismissed) and remove from the active report view.
+  (applied | dismissed) and gray it out in place in the active report view (it is NOT removed — see §8)
 - CRUD for `search_profiles`.
 - `GET /api/exclusions`, `POST /api/exclusions/:id/restore` — view and undo exclusions.
 
@@ -248,8 +249,16 @@ Keep it minimal — enough to demo, no more.
 2. **API key entry** — a small settings field; explains it's never stored.
 3. **Profiles list** — create / pick / delete. Deliberately simple (PRD scope guard).
 4. **Profile editor** — the parameter form (positions ranked, industry, keywords, location, filters, time budget, optional max-jobs ceiling). The time-budget and max-jobs fields show the user-facing cost descriptions from PRD §4.1.
-5. **Run + report view** — click Run, watch progress, see ranked results with the "why"
-   line; per-result **Save** / **Dismiss (applied|not interested)**.
+5. **Run + report view** — click Run, watch progress, see ranked results with the
+   "why" line. Each result offers two exclusion actions: **Applied** and
+   **Dismiss** (both add the job to the global exclusion list, tagged with that
+   reason). When a result is excluded, it is **grayed out in place — not removed** —
+   so the list doesn't reflow and you keep your place. A grayed result shows its
+   chosen state ("Applied ✓" or "Dismissed ✓"), a **Restore** link, and keeps its
+   **View** link active (you can still open a grayed job's posting). **Restore fully
+   un-excludes** — it removes the entry from the exclusion list (verified: excluded
+   job appears in the exclusions list, and after Restore it is gone), so the job can
+   appear in future runs again.
 6. **Saved reports** — review saved results later.
 7. **Exclusions view** — see what's excluded; **restore** an entry.
 
