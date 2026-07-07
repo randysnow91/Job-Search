@@ -3,7 +3,8 @@ import { supabase } from '@/lib/supabase';
 import { DEV_USER_ID } from '@/lib/dev';
 import { runSearch } from '@/lib/search';
 import { deduplicateResults } from '@/lib/dedup';
-import type { SearchProfile, JobResult } from '@/lib/types';
+import { rankResults } from '@/lib/rank';
+import type { SearchProfile, RankedResult } from '@/lib/types';
 
 function buildOverview(profile: SearchProfile, jobCount: number, stoppedReason: string): string {
   const positions = profile.positions.slice(0, 2).join(', ');
@@ -88,7 +89,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const overview = buildOverview(profile, filteredResults.length, searchResult.stoppedReason);
+    // Rank results and generate why-lines (spec §5 steps 6–7).
+    const rankedResults = await rankResults(profile, filteredResults, apiKey);
+
+    const overview = buildOverview(profile, rankedResults.length, searchResult.stoppedReason);
     const locationDisplay = buildLocationDisplay(profile);
 
     // Save the report row first.
@@ -101,7 +105,7 @@ export async function POST(request: NextRequest) {
         run_finished_at: finishedAt.toISOString(),
         overview,
         stopped_reason: searchResult.stoppedReason,
-        jobs_found: filteredResults.length,
+        jobs_found: rankedResults.length,
       })
       .select('id')
       .single();
@@ -112,15 +116,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Save one results row per job.
-    if (filteredResults.length > 0) {
-      const rows = filteredResults.map((job: JobResult, index: number) => ({
+    if (rankedResults.length > 0) {
+      const rows = rankedResults.map((job: RankedResult, index: number) => ({
         report_id: report.id,
         user_id: DEV_USER_ID,
         company: job.company,
         title: job.title,
-        why: job.summary,          // M6 replaces with judgment-ranking explanation
+        why: job.why,
         salary: job.salary,
-        location_display: locationDisplay, // M6 replaces with per-job proximity
+        location_display: locationDisplay,
         source: job.source,
         link: job.link,
         rank: index + 1,

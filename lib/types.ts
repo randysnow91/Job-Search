@@ -8,6 +8,17 @@ export interface JobResult {
   job_identity?: string; // set by deduplicateResults() before results are saved
 }
 
+// Produced by rankResults() — replaces JobResult.summary with a genuine why-line.
+export interface RankedResult {
+  company: string;
+  title: string;
+  why: string;
+  salary: string | null;
+  source: string;
+  link: string;
+  job_identity?: string;
+}
+
 export interface SearchOutput {
   results: JobResult[];
   stoppedReason: 'time_budget' | 'max_reached' | 'completed';

@@ -1,6 +1,6 @@
 # Claude Code Build Spec — Job Search Agent App
 
-**Status:** Draft v1.5 (build/implementation spec)
+**Status:** Draft v1.6 (build/implementation spec)
 **Derived from:** `job-search-app-PRD.md` (the product document — read it first)
 **Audience:** Claude Code (the coding agent) + the builder (product owner)
 
@@ -12,6 +12,7 @@
 | v1.3    | 2026-07-04 | Corrected search-model guidance: Opus 4.8 is the known-good default (Sonnet 5 did not complete a 120s run; Haiku errored); root cause not yet determined. Documented that true partial-results-on-timeout for a single long call requires streaming (deferred past M2). Both stopping conditions verified in testing. PRD unaffected (stays v1.2). |
 | v1.4    | 2026-07-06 | M4 dedup ships with steps 1–2 (exact URL + normalized company/title/location key); step 3 (model judgment for near-matches) deferred pending testing. Documented recall-first "when in doubt keep both" bias and the step-2 same-title over-merge blind spot. PRD unaffected. |
 | v1.5    | 2026-07-06 | Report-view exclusion behavior: dismissing/applying grays the result in place (not removed), keeping View and Restore links active; Restore fully un-excludes. Both reason tags (applied/dismissed) surfaced in the report UI. Verified against a live run. |
+| v1.6    | 2026-07-06 | Documented the two-model split: Opus 4.8 for the agentic search (`SEARCH_MODEL`), Haiku 4.5 for the lightweight ranking/why-line pass (`RANK_MODEL`, overridable) — a deliberate cost decision. Clarified Haiku errored on *search* but is reliable for *ranking*. M6 recall test verified. PRD unaffected. |
 
 > **How to use this document.**
 > The PRD says *what* and *why*. This spec says *how, with what, and in what order*.
@@ -39,7 +40,8 @@ any of them — the reasoning is here so you know what you'd be trading.
 | **Hosting** | **Render** (Hobby workspace + one **Starter** web-service instance, ~$7/mo) | Deploys from GitHub → a public link (a hard PRD requirement). Unlike serverless hosts, Render runs a **persistent server** with request timeouts up to ~100 min and **first-class background workers + cron** — so the long-running search and later scheduling are native, not workarounds. A paid Starter instance also keeps the demo **always warm** (free instances cold-start ~30–60s, which kills a portfolio demo). See §3.1. |
 | **Database + Auth** | **Supabase** | Managed Postgres + built-in auth + a friendly dashboard, generous free tier. Gives per-user data scoping and sign-in without building either from scratch. |
 | **Search engine** | **Anthropic Messages API + hosted web-search tool**, lightweight agent loop | Pure HTTP calls — deploys anywhere, no bundled binary, no scraping infrastructure. See §3.2 for why not the Agent SDK. |
-| **Search model** | **Claude Opus 4.8** (`claude-opus-4-8`), via `SEARCH_MODEL` | Empirically required for the search engine: in testing, Opus 4.8 reliably **completes** an agentic search run within the time budget; **Sonnet 5 did not complete a run within a 120s budget**, and **Haiku 4.5 errored** on this workload. Configurable, but Opus is the known-good default for search. Cheaper models were not viable substitutes for *this* task (see §10). |
+| **Search model** | **Claude Opus 4.8** (`claude-opus-4-8`), via `SEARCH_MODEL` | For the agentic search itself (tool use, multi-step web search): in testing, Opus 4.8 reliably **completes** a run within the time budget; **Sonnet 5 did not complete a run within a 120s budget**, and **Haiku 4.5 errored** on this workload. Opus is the known-good default for search (see §10). |
+| **Ranking model** | **Claude Haiku 4.5** (default), via `RANK_MODEL` (overridable) | For the lightweight matching/ranking + "why"-line pass, which runs AFTER search on a fixed candidate list — no tools, just text-in / JSON-out. A cheap model is sufficient here and cuts cost. Note: Haiku errored on the *agentic search* (a hard task) but is reliable for *ranking* (a light one) — different tasks, different requirements. Verified working in M6. |
 | **Long-running / scheduled work** | **Render background workers + cron** (native) | For deeper V1 runs and V2 scheduling. Because Render supports these as first-class service types, no third-party durable-execution service is needed (see §3.1, §14). |
 
 **Language:** TypeScript throughout (type safety helps Claude Code produce correct code
@@ -330,6 +332,11 @@ on. A suggested first Claude Code prompt is given for each.
 - **Build:** the §5.6 gates + judgment ranking + the **"why" line**.
 - **Verify:** a plausible-but-imperfect role still appears (recall test); results are
   sensibly ordered; each carries a why-line.
+  - > **Model note (v1.6):** ranking + why-line run on a separate cheaper model
+    > (`RANK_MODEL`, default Haiku 4.5) from the Opus search — a deliberate cost
+    > split. Verified: recall test passed (a plausible-but-imperfect role appeared,
+    > ranked last with an honest "stretch" why-line, not buried), and why-lines were
+    > consistently clear across the run.
 
 ### M7 — Auth + multi-user
 - **Build:** Supabase Auth; replace the hardcoded `user_id`; scope every query by the
@@ -366,15 +373,15 @@ ships and is on your resume.
 
 **The search's API cost (what *users* pay):**
 - **BYO key:** each user pays their own Claude usage (PRD §7.1). Keeps that cost off you.
-- **Model: Opus 4.8 is the known-good default for the search engine** (env
-  `SEARCH_MODEL`). Testing finding: Opus 4.8 completes agentic search runs within
-  the time budget; **Sonnet 5 did not complete a single run within a 120s
-  budget**, and **Haiku 4.5 errored** on this workload. Whether Sonnet is
-  genuinely slower or was simply searching more deeply (and so not reaching
-  completion) is **not yet determined** — the proven fact is only that Opus
-  completes within budget and the cheaper models did not. Cost consequence: the
-  cheap-model testing path assumed earlier is not available; test on Opus with a
-  short time budget and verification off.
+- **Two-model split (cost decision):** the **agentic search** runs on **Opus 4.8**
+  (`SEARCH_MODEL`) — required because cheaper models didn't complete the search
+  reliably (Sonnet 5 didn't finish a 120s run; Haiku 4.5 errored). The separate
+  **ranking / why-line pass** runs on **Haiku 4.5** by default (`RANK_MODEL`,
+  overridable) because it's a light text-in/JSON-out task on an already-gathered
+  candidate list, where a cheap model is sufficient. This keeps the expensive model
+  on the hard task only. Root cause of Sonnet/Haiku not completing the *search* is
+  still undetermined; the proven facts are that Opus completes the search and that
+  Haiku handles ranking reliably (verified in M6).
 - **Enable prompt caching** to cut repeated-context cost.
 - **The time budget and the optional Max Jobs ceiling are the cost caps** — together they control how much a run spends. Source discovery (§5.2) is the dominant cost; that's intentional.
 
