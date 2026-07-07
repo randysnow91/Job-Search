@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
-import { DEV_USER_ID } from '@/lib/dev';
+import { createClient } from '@/lib/supabase/server';
 
 export async function POST(
   request: NextRequest,
@@ -14,12 +13,15 @@ export async function POST(
     return NextResponse.json({ error: 'reason must be applied or dismissed' }, { status: 400 });
   }
 
-  // Look up the result to get job_identity, company, title.
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   const { data: result, error: resultError } = await supabase
     .from('results')
     .select('job_identity, company, title')
     .eq('id', id)
-    .eq('user_id', DEV_USER_ID)
+    .eq('user_id', user.id)
     .single();
 
   if (resultError || !result) {
@@ -31,7 +33,7 @@ export async function POST(
     .from('exclusions')
     .upsert(
       {
-        user_id: DEV_USER_ID,
+        user_id: user.id,
         job_identity: result.job_identity,
         company: result.company,
         title: result.title,

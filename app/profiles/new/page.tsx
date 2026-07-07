@@ -1,7 +1,13 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
+import { createClient } from '@/lib/supabase/server';
 import ProfileForm from '../ProfileForm';
 
-export default function NewProfilePage() {
+export default async function NewProfilePage() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
   return (
     <div className="mx-auto max-w-2xl p-8">
       <div className="mb-6">
@@ -10,7 +16,7 @@ export default function NewProfilePage() {
         </Link>
         <h1 className="mt-2 text-2xl font-bold text-zinc-900">Create profile</h1>
       </div>
-      <ProfileForm />
+      <ProfileForm userId={user.id} />
     </div>
   );
 }

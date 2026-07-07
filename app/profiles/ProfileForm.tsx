@@ -2,20 +2,19 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { createClient } from '@/lib/supabase/client';
 import { SearchProfile } from '@/lib/types';
-import { DEV_USER_ID } from '@/lib/dev';
 
 interface Props {
   profile?: SearchProfile;
+  userId: string;
 }
 
-export default function ProfileForm({ profile }: Props) {
+export default function ProfileForm({ profile, userId }: Props) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Form field state — for JSON fields we use plain text that we parse on save
   const [name, setName] = useState(profile?.name ?? '');
   const [positions, setPositions] = useState(profile?.positions.join('\n') ?? '');
   const [industry, setIndustry] = useState(profile?.industry ?? '');
@@ -36,8 +35,10 @@ export default function ProfileForm({ profile }: Props) {
     setSaving(true);
     setError(null);
 
+    const supabase = createClient();
+
     const data = {
-      user_id: DEV_USER_ID,
+      user_id: userId,
       name: name.trim(),
       positions: positions.split('\n').map((p) => p.trim()).filter(Boolean),
       industry: industry.trim(),
@@ -55,7 +56,11 @@ export default function ProfileForm({ profile }: Props) {
     };
 
     const result = profile
-      ? await supabase.from('search_profiles').update(data).eq('id', profile.id).eq('user_id', DEV_USER_ID)
+      ? await supabase
+          .from('search_profiles')
+          .update(data)
+          .eq('id', profile.id)
+          .eq('user_id', userId)
       : await supabase.from('search_profiles').insert(data);
 
     if (result.error) {

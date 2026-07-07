@@ -1,20 +1,25 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { supabase } from '@/lib/supabase';
+import { createClient } from '@/lib/supabase/client';
 import { SearchProfile } from '@/lib/types';
-import { DEV_USER_ID } from '@/lib/dev';
 
 export default function ProfilesPage() {
   const [profiles, setProfiles] = useState<SearchProfile[]>([]);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
   async function fetchProfiles() {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { router.push('/login'); return; }
+
     const { data, error } = await supabase
       .from('search_profiles')
       .select('*')
-      .eq('user_id', DEV_USER_ID)
+      .eq('user_id', user.id)
       .order('created_at', { ascending: false });
 
     if (!error && data) setProfiles(data);
@@ -27,8 +32,18 @@ export default function ProfilesPage() {
 
   async function deleteProfile(id: string) {
     if (!confirm('Delete this profile?')) return;
-    await supabase.from('search_profiles').delete().eq('id', id).eq('user_id', DEV_USER_ID);
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    await supabase.from('search_profiles').delete().eq('id', id).eq('user_id', user.id);
     setProfiles((prev) => prev.filter((p) => p.id !== id));
+  }
+
+  async function signOut() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push('/login');
+    router.refresh();
   }
 
   if (loading) {
@@ -52,6 +67,12 @@ export default function ProfilesPage() {
           >
             New profile
           </Link>
+          <button
+            onClick={signOut}
+            className="text-sm text-zinc-400 hover:text-zinc-700"
+          >
+            Sign out
+          </button>
         </div>
       </div>
 

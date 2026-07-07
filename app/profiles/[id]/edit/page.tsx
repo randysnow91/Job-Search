@@ -1,7 +1,6 @@
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
-import { DEV_USER_ID } from '@/lib/dev';
+import { notFound, redirect } from 'next/navigation';
+import { createClient } from '@/lib/supabase/server';
 import ProfileForm from '../../ProfileForm';
 
 export default async function EditProfilePage({
@@ -11,11 +10,15 @@ export default async function EditProfilePage({
 }) {
   const { id } = await params;
 
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
   const { data: profile } = await supabase
     .from('search_profiles')
     .select('*')
     .eq('id', id)
-    .eq('user_id', DEV_USER_ID)
+    .eq('user_id', user.id)
     .single();
 
   if (!profile) notFound();
@@ -28,7 +31,7 @@ export default async function EditProfilePage({
         </Link>
         <h1 className="mt-2 text-2xl font-bold text-zinc-900">Edit profile</h1>
       </div>
-      <ProfileForm profile={profile} />
+      <ProfileForm profile={profile} userId={user.id} />
     </div>
   );
 }

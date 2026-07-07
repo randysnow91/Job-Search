@@ -1,6 +1,6 @@
 # Claude Code Build Spec — Job Search Agent App
 
-**Status:** Draft v1.6 (build/implementation spec)
+**Status:** Draft v1.7 (build/implementation spec)
 **Derived from:** `job-search-app-PRD.md` (the product document — read it first)
 **Audience:** Claude Code (the coding agent) + the builder (product owner)
 
@@ -13,6 +13,7 @@
 | v1.4    | 2026-07-06 | M4 dedup ships with steps 1–2 (exact URL + normalized company/title/location key); step 3 (model judgment for near-matches) deferred pending testing. Documented recall-first "when in doubt keep both" bias and the step-2 same-title over-merge blind spot. PRD unaffected. |
 | v1.5    | 2026-07-06 | Report-view exclusion behavior: dismissing/applying grays the result in place (not removed), keeping View and Restore links active; Restore fully un-excludes. Both reason tags (applied/dismissed) surfaced in the report UI. Verified against a live run. |
 | v1.6    | 2026-07-06 | Documented the two-model split: Opus 4.8 for the agentic search (`SEARCH_MODEL`), Haiku 4.5 for the lightweight ranking/why-line pass (`RANK_MODEL`, overridable) — a deliberate cost decision. Clarified Haiku errored on *search* but is reliable for *ranking*. M6 recall test verified. PRD unaffected. |
+| v1.7    | 2026-07-07 | M7 auth verified (credential rejection, per-user isolation confirmed via UI and direct-URL/RLS test). Documented account management (email/password change, password reset, deletion) as a deliberate V1 non-goal in §12 and an upgrade path in §14, with password reset flagged as the priority item in that bucket. PRD unaffected. (wording corrected: email typo could not be fixed via SQL or dashboard, only by recreating the account) |
 
 > **How to use this document.**
 > The PRD says *what* and *why*. This spec says *how, with what, and in what order*.
@@ -342,6 +343,11 @@ on. A suggested first Claude Code prompt is given for each.
 - **Build:** Supabase Auth; replace the hardcoded `user_id`; scope every query by the
   signed-in user.
 - **Verify:** two accounts see only their own profiles, reports, and exclusions.
+  - > **Verified (v1.7):** sign-in rejects bad credentials and unknown accounts;
+    > existing features still work under real auth; Account B cannot see Account A's
+    > data in the UI **or** by opening Account A's report URL directly (RLS enforced
+    > at the database, not just the app). Account management (email/password change,
+    > password reset, deletion) is deliberately out of V1 — see §12.
 
 ### M8 — Key handling hardening
 - **Build:** enforce §7 exactly — key transient, never logged/stored, scrubbed after a
@@ -434,6 +440,18 @@ improve.
 - Custom scrapers for ToS-restricted sites.
 - Required ("must-have") keyword gating — kept out on purpose (PRD §4.4).
 - A "run at 5am" toggle anywhere in the UI — its presence means V2 leaked into V1.
+- Account management — changing email, changing password, password reset, and
+  account deletion. Auth (sign up / sign in) exists as of M7, but self-service
+  account management does not. Deliberately deferred: the V1 audience (the builder
+  + recruiters trying a demo) doesn't need it, and it's a whole category of work
+  that doesn't demonstrate anything the app is meant to demonstrate. Note: even
+  fixing a mistyped email at signup is non-trivial — the email lives in Supabase's
+  protected `auth.users` schema, not an app table, and could not be edited via SQL
+  or the Supabase dashboard (the dashboard offered only delete, no edit), so the
+  account had to be recreated. **Password reset is the highest-priority item in
+  this deferred bucket** — a forgotten password is a dead end a real user can't
+  self-recover from at all — but the email experience shows even "small" account
+  fixes need real tooling.
 
 ---
 
@@ -469,6 +487,13 @@ improve.
   with roles that match the profile but are already closed, record those employers so the
   user can monitor them for future openings. Keeps useful signal that would otherwise be
   silently discarded.
+- **Account management (deferred from V1):** self-service password reset (the
+  priority item — a forgotten password is otherwise unrecoverable), plus change
+  email (non-trivial — email lives in Supabase's guarded auth schema and isn't
+  editable via SQL or the dashboard; requires the admin API or account recreation),
+  change password, and delete account. None are needed for the V1 portfolio/demo
+  use, but password reset is the first to add the moment the app has real users who
+  can lock themselves out.
 - **Streaming for true partial results:** capture results as they stream from the
   model, so a run cut off mid-response still returns what it found — regardless of
   model or whether the call completed. Structurally fixes the v1.3 known

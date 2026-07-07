@@ -1,5 +1,5 @@
-import { supabase } from '@/lib/supabase';
-import { DEV_USER_ID } from '@/lib/dev';
+import { createClient } from '@/lib/supabase/server';
+import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import type { ReportResult } from '@/lib/types';
 import ResultCard from './ResultCard';
@@ -13,24 +13,28 @@ export default async function ReportPage({
 }) {
   const { id } = await params;
 
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
   const { data: report } = await supabase
     .from('reports')
     .select('*, search_profiles(id, name, positions, location)')
     .eq('id', id)
-    .eq('user_id', DEV_USER_ID)
+    .eq('user_id', user.id)
     .single();
 
   const { data: results } = await supabase
     .from('results')
     .select('*')
     .eq('report_id', id)
-    .eq('user_id', DEV_USER_ID)
+    .eq('user_id', user.id)
     .order('rank', { ascending: true });
 
   const { data: exclusionRows } = await supabase
     .from('exclusions')
     .select('id, job_identity, reason')
-    .eq('user_id', DEV_USER_ID);
+    .eq('user_id', user.id);
 
   const excludedMap = new Map<string, { reason: string; exclusionId: string }>(
     (exclusionRows ?? []).map((e) => [e.job_identity, { reason: e.reason, exclusionId: e.id }])
@@ -73,7 +77,6 @@ export default async function ReportPage({
 
   return (
     <div className="mx-auto max-w-3xl p-8">
-      {/* Navigation */}
       <div className="mb-6 flex items-center justify-between">
         <Link href="/reports" className="text-sm text-zinc-500 hover:text-zinc-900">
           ← All reports
@@ -88,7 +91,6 @@ export default async function ReportPage({
         )}
       </div>
 
-      {/* Report header */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-zinc-900">
           {profile?.name ?? 'Search report'}
@@ -102,7 +104,6 @@ export default async function ReportPage({
 
       {stopBanner && <div className="mb-6">{stopBanner}</div>}
 
-      {/* Results */}
       {!results || results.length === 0 ? (
         <p className="text-zinc-500">No job results were captured for this run.</p>
       ) : (

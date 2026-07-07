@@ -1,14 +1,18 @@
-import { supabase } from '@/lib/supabase';
-import { DEV_USER_ID } from '@/lib/dev';
+import { createClient } from '@/lib/supabase/server';
+import { redirect } from 'next/navigation';
 import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
 
 export default async function ReportsPage() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
   const { data: reports } = await supabase
     .from('reports')
     .select('*, search_profiles(name)')
-    .eq('user_id', DEV_USER_ID)
+    .eq('user_id', user.id)
     .order('run_started_at', { ascending: false });
 
   return (

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
-import { DEV_USER_ID } from '@/lib/dev';
+import { createClient } from '@/lib/supabase/server';
 import { runSearch } from '@/lib/search';
 import { deduplicateResults } from '@/lib/dedup';
 import { rankResults } from '@/lib/rank';
@@ -33,6 +32,12 @@ function buildLocationDisplay(profile: SearchProfile): string {
 }
 
 export async function POST(request: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const body = await request.json();
   const { profileId } = body as { profileId: string };
 
@@ -52,18 +57,17 @@ export async function POST(request: NextRequest) {
     .from('search_profiles')
     .select('*')
     .eq('id', profileId)
-    .eq('user_id', DEV_USER_ID)
+    .eq('user_id', user.id)
     .single();
 
   if (profileError || !profile) {
     return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
   }
 
-  // Load exclusions before the search (spec §5 step 1).
   const { data: exclusionRows } = await supabase
     .from('exclusions')
     .select('job_identity')
-    .eq('user_id', DEV_USER_ID);
+    .eq('user_id', user.id);
 
   const excludedIdentities = new Set(
     (exclusionRows ?? []).map((e: { job_identity: string }) => e.job_identity)
@@ -77,8 +81,6 @@ export async function POST(request: NextRequest) {
 
     const dedupedResults = deduplicateResults(searchResult.results);
 
-    // Apply exclusions (spec §5 step 5) — drop any result whose job_identity
-    // is on the user's exclusion list.
     const filteredResults = dedupedResults.filter(
       (job) => !excludedIdentities.has(job.job_identity ?? '')
     );
@@ -89,18 +91,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Rank results and generate why-lines (spec §5 steps 6–7).
     const rankedResults = await rankResults(profile, filteredResults, apiKey);
 
     const overview = buildOverview(profile, rankedResults.length, searchResult.stoppedReason);
     const locationDisplay = buildLocationDisplay(profile);
 
-    // Save the report row first.
     const { data: report, error: reportError } = await supabase
       .from('reports')
       .insert({
         profile_id: profileId,
-        user_id: DEV_USER_ID,
+        user_id: user.id,
         run_started_at: startedAt.toISOString(),
         run_finished_at: finishedAt.toISOString(),
         overview,
@@ -115,11 +115,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to save report' }, { status: 500 });
     }
 
-    // Save one results row per job.
     if (rankedResults.length > 0) {
       const rows = rankedResults.map((job: RankedResult, index: number) => ({
         report_id: report.id,
-        user_id: DEV_USER_ID,
+        user_id: user.id,
         company: job.company,
         title: job.title,
         why: job.why,
@@ -135,7 +134,6 @@ export async function POST(request: NextRequest) {
       const { error: resultsError } = await supabase.from('results').insert(rows);
       if (resultsError) {
         console.error('[search/run] results insert error:', resultsError);
-        // Report header saved — return the id so the user still sees a (empty) report.
       }
     }
 

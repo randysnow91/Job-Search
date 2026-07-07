@@ -3,8 +3,7 @@
 import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { supabase } from '@/lib/supabase';
-import { DEV_USER_ID } from '@/lib/dev';
+import { createClient } from '@/lib/supabase/client';
 import type { SearchProfile } from '@/lib/types';
 
 export default function RunSearchPage({ params }: { params: Promise<{ id: string }> }) {
@@ -15,13 +14,21 @@ export default function RunSearchPage({ params }: { params: Promise<{ id: string
   const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
-    supabase
-      .from('search_profiles')
-      .select('*')
-      .eq('id', id)
-      .eq('user_id', DEV_USER_ID)
-      .single()
-      .then(({ data }) => setProfile(data));
+    async function load() {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { router.push('/login'); return; }
+
+      const { data } = await supabase
+        .from('search_profiles')
+        .select('*')
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .single();
+
+      setProfile(data);
+    }
+    load();
   }, [id]);
 
   async function startSearch() {

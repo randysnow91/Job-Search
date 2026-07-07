@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
-import { DEV_USER_ID } from '@/lib/dev';
+import { createClient } from '@/lib/supabase/server';
 
 export async function POST(
   _request: NextRequest,
@@ -8,11 +7,15 @@ export async function POST(
 ) {
   const { id } = await params;
 
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   const { error } = await supabase
     .from('exclusions')
     .delete()
     .eq('id', id)
-    .eq('user_id', DEV_USER_ID);
+    .eq('user_id', user.id);
 
   if (error) {
     console.error('[restore] error:', error);
