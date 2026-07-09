@@ -6,12 +6,21 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import type { SearchProfile } from '@/lib/types';
 
+const SESSION_KEY = 'anthropic_api_key';
+
 export default function RunSearchPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
   const [profile, setProfile] = useState<SearchProfile | null>(null);
-  const [status, setStatus] = useState<'idle' | 'running' | 'error'>('idle');
+  const [apiKey, setApiKey] = useState('');
+  const [status, setStatus] = useState<'idle' | 'running' | 'error' | 'no_key'>('idle');
   const [errorMsg, setErrorMsg] = useState('');
+  const [errorCode, setErrorCode] = useState('');
+
+  useEffect(() => {
+    const saved = sessionStorage.getItem(SESSION_KEY);
+    if (saved) setApiKey(saved);
+  }, []);
 
   useEffect(() => {
     async function load() {
@@ -31,7 +40,18 @@ export default function RunSearchPage({ params }: { params: Promise<{ id: string
     load();
   }, [id]);
 
+  function handleKeyChange(value: string) {
+    setApiKey(value);
+    sessionStorage.setItem(SESSION_KEY, value);
+    if (status === 'no_key') setStatus('idle');
+  }
+
   async function startSearch() {
+    if (!apiKey.trim()) {
+      setStatus('no_key');
+      return;
+    }
+
     setStatus('running');
     setErrorMsg('');
 
@@ -39,13 +59,14 @@ export default function RunSearchPage({ params }: { params: Promise<{ id: string
       const res = await fetch('/api/search/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ profileId: id }),
+        body: JSON.stringify({ profileId: id, apiKey: apiKey.trim() }),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
         setErrorMsg(data.error ?? 'Search failed');
+        setErrorCode(data.code ?? 'generic');
         setStatus('error');
         return;
       }
@@ -75,11 +96,57 @@ export default function RunSearchPage({ params }: { params: Promise<{ id: string
         )}
       </div>
 
-      {status === 'idle' && (
+      {/* API key input — always visible */}
+      <div className="mb-6">
+        <label className="block text-sm font-medium text-zinc-700 mb-1">
+          Your Anthropic API key
+        </label>
+        <input
+          type="password"
+          value={apiKey}
+          onChange={(e) => handleKeyChange(e.target.value)}
+          placeholder="sk-ant-..."
+          className="w-full rounded border border-zinc-300 px-3 py-2 text-sm font-mono text-zinc-900 focus:border-zinc-500 focus:outline-none"
+        />
+        <p className="mt-1.5 text-xs text-zinc-500">
+          We never store your key. It is used for this run only and discarded when the search finishes.
+        </p>
+        <p className="mt-1 text-xs text-zinc-500">
+          Heads up: running a search uses your own Anthropic API credits. If a search
+          won&apos;t run, check your balance at{' '}
+          <a
+            href="https://platform.claude.com/dashboard"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-zinc-700"
+          >
+            platform.claude.com/dashboard
+          </a>
+          .
+        </p>
+      </div>
+
+      {/* No-key message */}
+      {status === 'no_key' && (
+        <div className="mb-4 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Please enter your Anthropic API key to run a search. Don&apos;t have one? Create an
+          account and generate a key at{' '}
+          <a
+            href="https://platform.claude.com/settings/keys"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-amber-900"
+          >
+            platform.claude.com/settings/keys
+          </a>{' '}
+          — you&apos;ll also need to add billing credits before searches will run.
+        </div>
+      )}
+
+      {status === 'idle' || status === 'no_key' ? (
         <div>
           <p className="mb-4 text-zinc-600">
-            This will call the Anthropic API and search the web for real job postings matching
-            your profile.
+            This will search the web for real job postings matching your profile.
             {profile &&
               ` The search runs for up to ${Math.round(profile.time_budget_seconds / 60)} minute${profile.time_budget_seconds >= 120 ? 's' : ''}.`}
           </p>
@@ -90,7 +157,7 @@ export default function RunSearchPage({ params }: { params: Promise<{ id: string
             Start search
           </button>
         </div>
-      )}
+      ) : null}
 
       {status === 'running' && (
         <div className="text-zinc-600">
@@ -103,7 +170,56 @@ export default function RunSearchPage({ params }: { params: Promise<{ id: string
 
       {status === 'error' && (
         <div>
-          <p className="mb-4 text-red-600">{errorMsg}</p>
+          <div className="mb-4 rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+            {errorCode === 'auth_error' && (
+              <>
+                That API key wasn&apos;t accepted. Please double-check it and try again. You
+                can view or create keys at{' '}
+                <a
+                  href="https://platform.claude.com/settings/keys"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-red-900"
+                >
+                  platform.claude.com/settings/keys
+                </a>
+                .
+              </>
+            )}
+            {errorCode === 'billing_error' && (
+              <>
+                Your API key is valid, but the search couldn&apos;t run — this usually means
+                your Anthropic account is out of credits. Check your balance at{' '}
+                <a
+                  href="https://platform.claude.com/dashboard"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-red-900"
+                >
+                  platform.claude.com/dashboard
+                </a>
+                .
+              </>
+            )}
+            {errorCode === 'rate_limit' && (
+              <>Too many requests right now. Please wait a moment and try again.</>
+            )}
+            {(errorCode === 'api_error' || errorCode === 'generic' || !errorCode) && (
+              <>
+                The search couldn&apos;t be completed. Please try again. If it keeps
+                happening, check your API key and account at{' '}
+                <a
+                  href="https://platform.claude.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-red-900"
+                >
+                  platform.claude.com
+                </a>
+                .
+              </>
+            )}
+          </div>
           <button
             onClick={startSearch}
             className="rounded bg-zinc-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-zinc-700"

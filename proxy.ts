@@ -38,7 +38,6 @@ export async function proxy(request: NextRequest) {
 
   // Routes that don't need a session.
   const isPublic =
-    path === '/' ||
     path === '/login' ||
     path.startsWith('/auth/') ||
     path.startsWith('/api/'); // API routes return 401 themselves
@@ -49,8 +48,8 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Already signed in — no need to show the login page.
-  if (user && path === '/login') {
+  // Signed-in users don't need the login page or the placeholder home.
+  if (user && (path === '/login' || path === '/')) {
     const url = request.nextUrl.clone();
     url.pathname = '/profiles';
     return NextResponse.redirect(url);

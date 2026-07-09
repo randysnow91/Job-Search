@@ -120,12 +120,14 @@ The app runs at `http://localhost:3000`.
 ```
 NEXT_PUBLIC_SUPABASE_URL=your-supabase-project-url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
-ANTHROPIC_API_KEY=your-anthropic-api-key
+SEARCH_MODEL=claude-opus-4-8
+RANK_MODEL=claude-haiku-4-5-20251001
 ```
 
-> **Note on the Anthropic key:** in the production design (§7 of the build
-> spec), each user supplies their own API key per run — it is never stored.
-> For local development, the key is read from the environment variable above
-> as a convenience. This is replaced in M8 (key handling hardening).
+> **Anthropic API key:** there is no `ANTHROPIC_API_KEY` env var — each user
+> enters their own key in the UI when running a search. The key is held in
+> `sessionStorage` for the tab session, sent over HTTPS per run, used in
+> server memory for that run only, and never stored anywhere (no database,
+> no disk, no logs). See §7 of the build spec.
 
 Do not commit `.env.local` or put real keys in this file in version control.

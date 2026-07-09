@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@/lib/supabase/server';
 import { runSearch } from '@/lib/search';
 import { deduplicateResults } from '@/lib/dedup';
@@ -39,18 +40,14 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { profileId } = body as { profileId: string };
+  const { profileId, apiKey } = body as { profileId: string; apiKey: string };
 
   if (!profileId) {
     return NextResponse.json({ error: 'profileId is required' }, { status: 400 });
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json(
-      { error: 'ANTHROPIC_API_KEY is not configured on the server' },
-      { status: 500 }
-    );
+  if (!apiKey || typeof apiKey !== 'string' || !apiKey.trim()) {
+    return NextResponse.json({ error: 'apiKey is required' }, { status: 400 });
   }
 
   const { data: profile, error: profileError } = await supabase
@@ -139,9 +136,45 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ reportId: report.id });
   } catch (err) {
-    console.error('[search/run]', err);
+    if (err instanceof Anthropic.APIError) {
+      const status = err.status;
+      const errBody = err.error as { error?: { type?: string; message?: string } } | undefined;
+      const errType = errBody?.error?.type ?? '';
+      const errMsg = (errBody?.error?.message ?? '').toLowerCase();
+
+      // Log only safe scalar fields — never the full error object, which may
+      // contain request headers that include the API key.
+      console.error('[search/run] Anthropic API error', { status, errType });
+
+      if (status === 401 || errType === 'authentication_error') {
+        return NextResponse.json(
+          { error: "That API key wasn't accepted. Please double-check it and try again.", code: 'auth_error' },
+          { status: 400 }
+        );
+      }
+      if (status === 402 || errType === 'billing_error' || errMsg.includes('credit') || errMsg.includes('billing') || errMsg.includes('balance')) {
+        return NextResponse.json(
+          { error: "Your API key is valid, but the search couldn't run — this usually means your Anthropic account is out of credits.", code: 'billing_error' },
+          { status: 400 }
+        );
+      }
+      if (status === 429 || errType === 'rate_limit_error') {
+        return NextResponse.json(
+          { error: 'Too many requests right now. Please wait a moment and try again.', code: 'rate_limit' },
+          { status: 429 }
+        );
+      }
+      return NextResponse.json(
+        { error: "The search couldn't be completed. Please try again.", code: 'api_error' },
+        { status: 500 }
+      );
+    }
+
+    // Non-Anthropic error (network failure, unexpected exception).
+    // Log the message string only — not the full object, which could contain request context.
+    console.error('[search/run] unexpected error:', err instanceof Error ? err.message : String(err));
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Search failed' },
+      { error: "The search couldn't be completed. Please try again.", code: 'generic' },
       { status: 500 }
     );
   }

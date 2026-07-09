@@ -1,6 +1,6 @@
 # Claude Code Build Spec — Job Search Agent App
 
-**Status:** Draft v1.7 (build/implementation spec)
+**Status:** Draft v1.8 (build/implementation spec)
 **Derived from:** `job-search-app-PRD.md` (the product document — read it first)
 **Audience:** Claude Code (the coding agent) + the builder (product owner)
 
@@ -14,6 +14,7 @@
 | v1.5    | 2026-07-06 | Report-view exclusion behavior: dismissing/applying grays the result in place (not removed), keeping View and Restore links active; Restore fully un-excludes. Both reason tags (applied/dismissed) surfaced in the report UI. Verified against a live run. |
 | v1.6    | 2026-07-06 | Documented the two-model split: Opus 4.8 for the agentic search (`SEARCH_MODEL`), Haiku 4.5 for the lightweight ranking/why-line pass (`RANK_MODEL`, overridable) — a deliberate cost decision. Clarified Haiku errored on *search* but is reliable for *ranking*. M6 recall test verified. PRD unaffected. |
 | v1.7    | 2026-07-07 | M7 auth verified (credential rejection, per-user isolation confirmed via UI and direct-URL/RLS test). Documented account management (email/password change, password reset, deletion) as a deliberate V1 non-goal in §12 and an upgrade path in §14, with password reset flagged as the priority item in that bucket. PRD unaffected. (wording corrected: email typo could not be fixed via SQL or dashboard, only by recreating the account) |
+| v1.8    | 2026-07-09 | M8 UI messaging: no-key message (verified), credits note (verified), friendly API-error handling — 401 (invalid key) and log-scrubbing verified with live tests; 402/429 message handling implemented but pending live confirmation. Sign out button noted. Auth routing and session-persistence documented as V1 decisions with idle-timeout deferred (§12, §14). Exclusion-list wording updated from "global" to "per-user, account-wide" throughout; cross-user isolation verified. PRD unaffected. |
 
 > **How to use this document.**
 > The PRD says *what* and *why*. This spec says *how, with what, and in what order*.
@@ -147,7 +148,7 @@ multi-user from day one, even while V1 is used by one person.
 - `job_identity` (text — the dedup key; see §11)
 - `status` ("in_report" | "saved")
 
-**`exclusions`** (the global, account-level list — NOT tied to a profile)
+**`exclusions`** (the per-user, account-wide list — one list per user, shared across that user's profiles, NOT tied to a specific profile; isolated between users by RLS)
 - `id`, `user_id`
 - `job_identity` (text — how we recognize the same role again; see §11)
 - `company`, `title` (for display)
@@ -250,11 +251,26 @@ because it *must* reach the server briefly to run the search.
 Keep it minimal — enough to demo, no more.
 1. **Sign in** (Supabase Auth — email or Google).
 2. **API key entry** — a small settings field; explains it's never stored.
+   - If a search is attempted with no key, a friendly inline message appears (browser
+     checks before sending any request): directs the user to create a key at
+     platform.claude.com/settings/keys and notes they'll also need billing credits.
+     (Verified.)
+   - Near the key field, an informative (not alarming) note that running a search uses
+     the user's own Anthropic credits, with a link to check balance at
+     platform.claude.com/dashboard. (Verified — link works.)
+   - API errors during a search are caught and shown as friendly inline messages, not
+     raw errors: invalid/mistyped key (401), out-of-credits/billing (402), rate limit
+     (429), and a generic fallback. The user never sees raw JSON, status codes, or
+     stack traces. Real error details are logged server-side only, with the API key
+     scrubbed so it is never written to logs. STATUS: 401 (invalid key) and log-
+     scrubbing verified with live tests; 402/429 message handling implemented but not
+     yet confirmed against a live error — pending (402 expected soon as dev credits
+     run out).
 3. **Profiles list** — create / pick / delete. Deliberately simple (PRD scope guard).
 4. **Profile editor** — the parameter form (positions ranked, industry, keywords, location, filters, time budget, optional max-jobs ceiling). The time-budget and max-jobs fields show the user-facing cost descriptions from PRD §4.1.
 5. **Run + report view** — click Run, watch progress, see ranked results with the
    "why" line. Each result offers two exclusion actions: **Applied** and
-   **Dismiss** (both add the job to the global exclusion list, tagged with that
+   **Dismiss** (both add the job to the per-user, account-wide exclusion list, tagged with that
    reason). When a result is excluded, it is **grayed out in place — not removed** —
    so the list doesn't reflow and you keep your place. A grayed result shows its
    chosen state ("Applied ✓" or "Dismissed ✓"), a **Restore** link, and keeps its
@@ -264,6 +280,25 @@ Keep it minimal — enough to demo, no more.
    appear in future runs again.
 6. **Saved reports** — review saved results later.
 7. **Exclusions view** — see what's excluded; **restore** an entry.
+
+A **Sign out** button is visible in the app nav (on the Profiles list screen).
+
+---
+
+### Auth routing & session behavior
+
+**Auth routing (two layers).** Unauthenticated users are redirected to login;
+authenticated users land on their profiles. Routing protects UX, but data is also
+protected at the data layer — RLS + server-side auth checks mean a direct URL to a
+data page while logged out reveals no data (verified: logged-out direct navigation
+bounces to login, shows no data).
+
+**Session persistence (V1 decision).** Login persists across browser close (Supabase
+session token) for convenience. The API key does NOT persist (sessionStorage,
+cleared when the session ends), so a shared-computer walk-away cannot spend money on
+the account — only low-stakes data (saved profiles/reports) would be viewable.
+Automatic session expiry / idle timeout is deliberately deferred (see §12, §14). A
+manual Sign out button is available.
 
 ---
 
@@ -322,7 +357,7 @@ on. A suggested first Claude Code prompt is given for each.
   different role at the same company (e.g. different seniority) is not wrongly merged;
   `job_identity` values are visible on saved rows in Supabase.
 
-### M5 — Global exclusion list
+### M5 — Per-user exclusion list
 - **Build:** `exclusions` table; **Save** / **Dismiss** actions; the engine reads
   exclusions first and drops matches (using `job_identity` from M4); the Exclusions
   view with **restore**.
@@ -452,6 +487,11 @@ improve.
   this deferred bucket** — a forgotten password is a dead end a real user can't
   self-recover from at all — but the email experience shows even "small" account
   fixes need real tooling.
+- Automatic session management — idle timeout, session expiry, "log out on browser
+  close." Login persists across sessions by design (convenience); the mitigating
+  factor is that the API key does not persist, so a persistent session cannot incur
+  API charges. A manual Sign out button exists. Automatic expiry is deferred to when
+  the app has real multi-user traffic (see §14).
 
 ---
 
@@ -494,6 +534,10 @@ improve.
   change password, and delete account. None are needed for the V1 portfolio/demo
   use, but password reset is the first to add the moment the app has real users who
   can lock themselves out.
+- **Session management (deferred from V1):** idle timeout, session expiry, and a
+  "keep me logged in" option — grouped with account management (§12). Matters once
+  the app has real users who might use shared computers; not needed for the V1
+  portfolio/demo.
 - **Streaming for true partial results:** capture results as they stream from the
   model, so a run cut off mid-response still returns what it found — regardless of
   model or whether the call completed. Structurally fixes the v1.3 known
