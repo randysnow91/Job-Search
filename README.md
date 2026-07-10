@@ -3,6 +3,10 @@
 An AI-powered job-search tool that goes hunting across the web — including the
 smaller and regional employers that never show up on the big boards.
 
+**Live demo:** [job-search-asjo.onrender.com](https://job-search-asjo.onrender.com)
+— you'll need your own [Anthropic API key](https://platform.claude.com/settings/keys)
+to run a search.
+
 ---
 
 ## About this project
@@ -85,7 +89,8 @@ just the code.
 
 ## Status
 
-V1 in progress. Milestones completed:
+**V1 complete.** All milestones M0–M9 built, deployed to Render, and verified
+end-to-end on the live site (fresh signup → profile → own API key → search → report).
 
 - **M0** — Project skeleton, deployed to Render
 - **M1** — Database + search profiles (Supabase)
@@ -95,11 +100,20 @@ V1 in progress. Milestones completed:
 - **M5** — Global exclusion list with inline restore
 - **M6** — Recall-first ranking with two-model split and why-lines
 - **M7** — Supabase Auth, multi-user support, Row Level Security
+- **M8** — API key handling hardening (key never stored or logged)
+- **M9** — Polish and public demo (home page, nav consistency, auth routing)
 
-Remaining:
+---
 
-- **M8** — API key handling hardening
-- **M9** — Polish and public demo
+## Known limitations / roadmap
+
+Search results may include closed postings — the engine isn't currently
+enforcing per-result verification before showing results, so users should
+confirm a posting is still open before applying. A code-enforced verification
+pass is the priority V2 item. The report back-link is also fixed rather than
+context-aware (it always returns to Profiles regardless of where you came from).
+Both are deliberate decisions, not accidents — the full detail and V2 roadmap
+live in [docs/BUILD-SPEC.md §14](docs/BUILD-SPEC.md).
 
 ---
 
