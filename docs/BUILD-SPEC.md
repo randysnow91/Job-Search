@@ -1,6 +1,6 @@
 # Claude Code Build Spec — Job Search Agent App
 
-**Status:** Draft v1.9 (build/implementation spec)
+**Status:** v2.0 — V1 COMPLETE (build/implementation spec)
 **Derived from:** `job-search-app-PRD.md` (the product document — read it first)
 **Audience:** Claude Code (the coding agent) + the builder (product owner)
 
@@ -16,6 +16,7 @@
 | v1.7    | 2026-07-07 | M7 auth verified (credential rejection, per-user isolation confirmed via UI and direct-URL/RLS test). Documented account management (email/password change, password reset, deletion) as a deliberate V1 non-goal in §12 and an upgrade path in §14, with password reset flagged as the priority item in that bucket. PRD unaffected. (wording corrected: email typo could not be fixed via SQL or dashboard, only by recreating the account) |
 | v1.8    | 2026-07-09 | M8 UI messaging: no-key message (verified), credits note (verified), friendly API-error handling — 401 (invalid key) and log-scrubbing verified with live tests; 402/429 message handling implemented but pending live confirmation. Sign out button noted. Auth routing and session-persistence documented as V1 decisions with idle-timeout deferred (§12, §14). Exclusion-list wording updated from "global" to "per-user, account-wide" throughout; cross-user isolation verified. PRD unaffected. |
 | v1.9    | 2026-07-10 | Verification stays OFF for V1: testing showed it's instructional (model-dependent), not code-enforced, so it doesn't reliably check the final result set (closed jobs reached the report). Documented the honest finding, kept the "results may be unverified" posture for V1, and specified the V2 fix as a code-enforced post-search verification pass (with its honest limits). Recorded the judgment-vs-guarantee design lesson. Noted a secondary logging bug (tool_use vs server_tool_use). PRD unaffected. |
+| v2.0    | 2026-07-10 | V1 COMPLETE. All milestones M0–M9 built, deployed to Render, and verified end-to-end on the live site via a full stranger-journey test (fresh signup → home → profile → own API key → search → report). Fixed a fresh-login redirect bug found in live testing. Recorded one deferred V1 limitation: context-aware report back-link (V2). PRD unaffected. |
 
 > **How to use this document.**
 > The PRD says *what* and *why*. This spec says *how, with what, and in what order*.
@@ -305,6 +306,9 @@ manual Sign out button is available.
 
 ## 9. Build Milestones (work these in order)
 
+**Status: V1 COMPLETE (v2.0).** All milestones M0–M9 built, deployed to Render, and
+verified end-to-end on the live public site. Remaining work is V2+ (see §14).
+
 Each milestone is a shippable, verifiable step. Build it, check it, commit it, then move
 on. A suggested first Claude Code prompt is given for each.
 
@@ -411,6 +415,12 @@ on. A suggested first Claude Code prompt is given for each.
   clean landing page.
 - **Verify:** a stranger with their own API key can sign up and run a search via the
   public link.
+- > **Verified (v2.0) — V1 complete.** The M9 acceptance test passed end to end on
+  > the LIVE deployed site: a fresh (stranger) account signed up, landed on the home
+  > page, created a profile, entered their own API key, ran a real search, and
+  > received a report — the full public-link journey. A fresh-login redirect bug
+  > (login pushed to /profiles instead of the home page) was found during the live
+  > test and fixed. V1 is functionally complete.
 
 **V1 is done at M9.** Scheduling (V2) and resume matching (V3) start only after this
 ships and is on your resume.
@@ -572,3 +582,11 @@ improve.
   model or whether the call completed. Structurally fixes the v1.3 known
   limitation in §5 (currently only avoided by using a model that completes within
   budget). Deferred past M2.
+- **Context-aware report back-link (deferred from V1):** the report view is shared
+  between two entry points — arriving from a profile after running a search, and
+  arriving from All Reports when reviewing a past report. The back-link is currently
+  fixed, so it can't return the user to whichever screen they actually came from.
+  Making it context-aware (pass or track the origin so "back" returns to the calling
+  screen) is a real change with edge cases; it was deliberately deferred rather than
+  risk a navigation regression at the V1 release. Minor UX issue — the user still
+  lands on a valid screen, just not always the one they came from.
