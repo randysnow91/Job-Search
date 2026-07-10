@@ -28,7 +28,7 @@ export default function LoginPage() {
         setLoading(false);
         return;
       }
-      router.push('/profiles');
+      router.push('/');
       router.refresh();
     } else {
       const { error } = await supabase.auth.signUp({ email, password });
