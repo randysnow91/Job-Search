@@ -1,6 +1,6 @@
 # Claude Code Build Spec — Job Search Agent App
 
-**Status:** Draft v1.8 (build/implementation spec)
+**Status:** Draft v1.9 (build/implementation spec)
 **Derived from:** `job-search-app-PRD.md` (the product document — read it first)
 **Audience:** Claude Code (the coding agent) + the builder (product owner)
 
@@ -15,6 +15,7 @@
 | v1.6    | 2026-07-06 | Documented the two-model split: Opus 4.8 for the agentic search (`SEARCH_MODEL`), Haiku 4.5 for the lightweight ranking/why-line pass (`RANK_MODEL`, overridable) — a deliberate cost decision. Clarified Haiku errored on *search* but is reliable for *ranking*. M6 recall test verified. PRD unaffected. |
 | v1.7    | 2026-07-07 | M7 auth verified (credential rejection, per-user isolation confirmed via UI and direct-URL/RLS test). Documented account management (email/password change, password reset, deletion) as a deliberate V1 non-goal in §12 and an upgrade path in §14, with password reset flagged as the priority item in that bucket. PRD unaffected. (wording corrected: email typo could not be fixed via SQL or dashboard, only by recreating the account) |
 | v1.8    | 2026-07-09 | M8 UI messaging: no-key message (verified), credits note (verified), friendly API-error handling — 401 (invalid key) and log-scrubbing verified with live tests; 402/429 message handling implemented but pending live confirmation. Sign out button noted. Auth routing and session-persistence documented as V1 decisions with idle-timeout deferred (§12, §14). Exclusion-list wording updated from "global" to "per-user, account-wide" throughout; cross-user isolation verified. PRD unaffected. |
+| v1.9    | 2026-07-10 | Verification stays OFF for V1: testing showed it's instructional (model-dependent), not code-enforced, so it doesn't reliably check the final result set (closed jobs reached the report). Documented the honest finding, kept the "results may be unverified" posture for V1, and specified the V2 fix as a code-enforced post-search verification pass (with its honest limits). Recorded the judgment-vs-guarantee design lesson. Noted a secondary logging bug (tool_use vs server_tool_use). PRD unaffected. |
 
 > **How to use this document.**
 > The PRD says *what* and *why*. This spec says *how, with what, and in what order*.
@@ -335,6 +336,22 @@ on. A suggested first Claude Code prompt is given for each.
   > significantly. Verification present but off by default is part of M2's
   > definition-of-done. Per-profile verification control and a UI toggle are **deferred
   > to V2**.
+- > **Finding (v1.9 — verification stays OFF for V1).** Final testing showed the
+  > verification mechanism, as built, is **instructional, not enforced** — the "verify
+  > each posting is still open" step lives in the model's prompt, and the model decides
+  > whether to run it. In a real run it verified some candidates (correctly discarding
+  > closed roles) but skipped verification on the final batch it returned, so closed
+  > jobs reached the report (2 of 4 were closed on manual check). Because verification
+  > is not reliably applied to the final result set, `VERIFICATION_ENABLED` stays
+  > **false** for V1. Shipping it on-but-inconsistent would be worse than off: it would
+  > imply results are verified when they are not. V1 is honest about this — results may
+  > include closed postings; users should confirm before applying. Reliable
+  > verification is a V2 feature (see §14).
+  >
+  > *Secondary logging bug noted for V2 implementer:* the verification logging checks
+  > for block type `tool_use`, but Anthropic's hosted tools (web_fetch) use
+  > `server_tool_use`, so the "no web_fetch calls" log line is unreliable — the
+  > logging needs fixing alongside the verification fix.
 - > **Added in v1.2:** Results are captured incrementally and a run that hits its time/max limit returns partial results with a stop reason — never zero.
 - > **Added in v1.3:** The "never returns zero" behavior currently holds only because Opus 4.8 completes within budget; the single-long-call case is a known limitation (see §5 callout). **Verified working:** a 2-min run with no max returned 6 jobs (`stopped_reason: time_budget`); a 10-min run with `max_jobs=3` stopped in ~1 min with 3 jobs (`stopped_reason: max_reached`). Both stopping conditions confirmed.
 - **Prompt seed:** *"Add an API route that calls the Anthropic Messages API with the
@@ -519,10 +536,22 @@ improve.
   resume-derived signals instead of (or alongside) typed parameters.
 - **Deeper search:** once the search runs in a Render background worker, raise the time budget back toward the
   original agent's depth.
-- **V2 per-profile verification:** the `VERIFICATION_ENABLED` flag moves out of env
-  config and into each `search_profiles` row, with a UI toggle on the profile editor.
-  Power users can opt into slower but more accurate results per search without affecting
-  other profiles.
+- **Reliable verification (V2) — the real fix.** V1's verification is instructional
+  (the model may skip it), so it's off. The V2 fix is a **dedicated post-search
+  verification pass**: after the search assembles its final candidate list, a
+  separate step (its own API call, possibly on a cheaper model) fetches every
+  candidate URL and returns only those still open. This is **code-enforced** — the
+  verification step is guaranteed to run on every final job, rather than left to the
+  model's discretion mid-search. Honest limitation to carry forward: even a
+  code-enforced pass can't perfectly detect "closed," because some postings are
+  JavaScript-rendered or block automated fetches — so the guarantee is that the
+  *check runs on every job*, not that the result is flawless. Once reliable, the flag
+  can also move from a global env setting to a **per-profile toggle** with a UI, so
+  each user chooses the cost/quality tradeoff.
+  *Design lesson recorded: this is a case of matching the tool to the task — search
+  and ranking are judgment work (well-suited to the model), but "is this URL still
+  open?" is a guarantee, which belongs in enforced code rather than a prompt
+  instruction the model can skip.*
 - **V4-ish (parked idea) — "Companies worth following":** when the engine finds employers
   with roles that match the profile but are already closed, record those employers so the
   user can monitor them for future openings. Keeps useful signal that would otherwise be

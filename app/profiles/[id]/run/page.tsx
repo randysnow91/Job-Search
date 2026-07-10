@@ -80,20 +80,22 @@ export default function RunSearchPage({ params }: { params: Promise<{ id: string
 
   return (
     <div className="mx-auto max-w-3xl p-8">
-      <div className="mb-6">
-        <Link href="/profiles" className="text-sm text-zinc-500 hover:text-zinc-900">
-          ← Back to profiles
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-zinc-900">
+            {profile ? profile.name : 'Run job search'}
+          </h1>
+          {profile && (
+            <p className="mt-1 text-sm text-zinc-500">
+              {profile.positions.slice(0, 2).join(', ')}
+              {profile.positions.length > 2 && ` +${profile.positions.length - 2} more`}
+              {profile.industry && ` · ${profile.industry}`}
+            </p>
+          )}
+        </div>
+        <Link href="/profiles" className="shrink-0 text-sm text-zinc-500 hover:text-zinc-900">
+          ← Profiles
         </Link>
-        <h1 className="mt-2 text-2xl font-bold text-zinc-900">
-          {profile ? profile.name : 'Run job search'}
-        </h1>
-        {profile && (
-          <p className="mt-1 text-sm text-zinc-500">
-            {profile.positions.slice(0, 2).join(', ')}
-            {profile.positions.length > 2 && ` +${profile.positions.length - 2} more`}
-            {profile.industry && ` · ${profile.industry}`}
-          </p>
-        )}
       </div>
 
       {/* API key input — always visible */}

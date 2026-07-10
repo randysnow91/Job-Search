@@ -25,11 +25,11 @@ export default async function EditProfilePage({
 
   return (
     <div className="mx-auto max-w-2xl p-8">
-      <div className="mb-6">
+      <div className="mb-6 flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-zinc-900">Edit profile</h1>
         <Link href="/profiles" className="text-sm text-zinc-500 hover:text-zinc-900">
-          ← Back to profiles
+          ← Profiles
         </Link>
-        <h1 className="mt-2 text-2xl font-bold text-zinc-900">Edit profile</h1>
       </div>
       <ProfileForm profile={profile} userId={user.id} />
     </div>

@@ -48,10 +48,10 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Signed-in users don't need the login page or the placeholder home.
-  if (user && (path === '/login' || path === '/')) {
+  // Signed-in users don't need the login page — send them to home.
+  if (user && path === '/login') {
     const url = request.nextUrl.clone();
-    url.pathname = '/profiles';
+    url.pathname = '/';
     return NextResponse.redirect(url);
   }
 

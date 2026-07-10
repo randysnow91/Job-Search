@@ -44,8 +44,8 @@ export default async function ReportPage({
     return (
       <div className="mx-auto max-w-3xl p-8">
         <p className="text-zinc-500">Report not found.</p>
-        <Link href="/reports" className="mt-4 block text-sm text-zinc-500 underline">
-          ← All reports
+        <Link href="/profiles" className="mt-4 block text-sm text-zinc-500 underline">
+          ← Profiles
         </Link>
       </div>
     );
@@ -77,29 +77,30 @@ export default async function ReportPage({
 
   return (
     <div className="mx-auto max-w-3xl p-8">
-      <div className="mb-6 flex items-center justify-between">
-        <Link href="/reports" className="text-sm text-zinc-500 hover:text-zinc-900">
-          ← All reports
-        </Link>
-        {profile && (
-          <Link
-            href={`/profiles/${profile.id}/run`}
-            className="rounded border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
-          >
-            Run again
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-zinc-900">
+            {profile?.name ?? 'Search report'}
+          </h1>
+          <p className="mt-1 text-sm text-zinc-500">
+            {runDate} · {durationLabel} · {report.jobs_found} job
+            {report.jobs_found !== 1 ? 's' : ''} found
+          </p>
+          <p className="mt-2 text-sm text-zinc-700">{report.overview}</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-3">
+          <Link href="/profiles" className="text-sm text-zinc-500 hover:text-zinc-900">
+            ← Profiles
           </Link>
-        )}
-      </div>
-
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-zinc-900">
-          {profile?.name ?? 'Search report'}
-        </h1>
-        <p className="mt-1 text-sm text-zinc-500">
-          {runDate} · {durationLabel} · {report.jobs_found} job
-          {report.jobs_found !== 1 ? 's' : ''} found
-        </p>
-        <p className="mt-2 text-sm text-zinc-700">{report.overview}</p>
+          {profile && (
+            <Link
+              href={`/profiles/${profile.id}/run`}
+              className="rounded border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+            >
+              Run again
+            </Link>
+          )}
+        </div>
       </div>
 
       {stopBanner && <div className="mb-6">{stopBanner}</div>}

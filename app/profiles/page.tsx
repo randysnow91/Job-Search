@@ -51,10 +51,13 @@ export default function ProfilesPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl p-8">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-zinc-900">Search Profiles</h1>
-        <div className="flex items-center gap-3">
+    <div className="mx-auto max-w-3xl p-8">
+      <div className="flex items-center gap-6">
+        <h1 className="mr-auto text-2xl font-bold text-zinc-900">Search Profiles</h1>
+        <div className="flex shrink-0 items-center gap-3">
+          <Link href="/" className="text-sm text-zinc-500 hover:text-zinc-900">
+            Home
+          </Link>
           <Link href="/reports" className="text-sm text-zinc-500 hover:text-zinc-900">
             All reports
           </Link>
@@ -82,7 +85,7 @@ export default function ProfilesPage() {
         <ul className="mt-6 space-y-3">
           {profiles.map((profile) => (
             <li key={profile.id} className="rounded border border-zinc-200 p-4">
-              <div className="flex items-start justify-between gap-4">
+              <div className="flex items-center justify-between gap-4">
                 <div>
                   <p className="font-medium text-zinc-900">{profile.name}</p>
                   {profile.positions.length > 0 && (
@@ -100,7 +103,7 @@ export default function ProfilesPage() {
                       : `Remote or ${profile.location.city ?? 'city'}`}
                   </p>
                 </div>
-                <div className="flex shrink-0 gap-3">
+                <div className="flex shrink-0 items-center gap-3">
                   <Link
                     href={`/profiles/${profile.id}/run`}
                     className="rounded bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700"
