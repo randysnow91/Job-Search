@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import type { ReportResult } from '@/lib/types';
 import ResultCard from './ResultCard';
+import ReportStatusPoller from './ReportStatusPoller';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,22 +25,6 @@ export default async function ReportPage({
     .eq('user_id', user.id)
     .single();
 
-  const { data: results } = await supabase
-    .from('results')
-    .select('*')
-    .eq('report_id', id)
-    .eq('user_id', user.id)
-    .order('rank', { ascending: true });
-
-  const { data: exclusionRows } = await supabase
-    .from('exclusions')
-    .select('id, job_identity, reason')
-    .eq('user_id', user.id);
-
-  const excludedMap = new Map<string, { reason: string; exclusionId: string }>(
-    (exclusionRows ?? []).map((e) => [e.job_identity, { reason: e.reason, exclusionId: e.id }])
-  );
-
   if (!report) {
     return (
       <div className="mx-auto max-w-3xl p-8">
@@ -57,6 +42,62 @@ export default async function ReportPage({
     positions: string[];
     location: { mode: string; city?: string; region?: string };
   } | null;
+
+  if (report.status === 'running') {
+    return (
+      <div className="mx-auto max-w-3xl p-8">
+        <div className="mb-6 flex items-start justify-between gap-4">
+          <h1 className="text-2xl font-bold text-zinc-900">{profile?.name ?? 'Search report'}</h1>
+          <Link href="/profiles" className="shrink-0 text-sm text-zinc-500 hover:text-zinc-900">
+            ← Profiles
+          </Link>
+        </div>
+        <ReportStatusPoller reportId={report.id} />
+      </div>
+    );
+  }
+
+  if (report.status === 'error') {
+    return (
+      <div className="mx-auto max-w-3xl p-8">
+        <div className="mb-6 flex items-start justify-between gap-4">
+          <h1 className="text-2xl font-bold text-zinc-900">{profile?.name ?? 'Search report'}</h1>
+          <div className="flex shrink-0 items-center gap-3">
+            <Link href="/profiles" className="text-sm text-zinc-500 hover:text-zinc-900">
+              ← Profiles
+            </Link>
+            {profile && (
+              <Link
+                href={`/profiles/${profile.id}/run`}
+                className="rounded border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+              >
+                Try again
+              </Link>
+            )}
+          </div>
+        </div>
+        <div className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          {report.error_message || "The search couldn't be completed. Please try again."}
+        </div>
+      </div>
+    );
+  }
+
+  const { data: results } = await supabase
+    .from('results')
+    .select('*')
+    .eq('report_id', id)
+    .eq('user_id', user.id)
+    .order('rank', { ascending: true });
+
+  const { data: exclusionRows } = await supabase
+    .from('exclusions')
+    .select('id, job_identity, reason')
+    .eq('user_id', user.id);
+
+  const excludedMap = new Map<string, { reason: string; exclusionId: string }>(
+    (exclusionRows ?? []).map((e) => [e.job_identity, { reason: e.reason, exclusionId: e.id }])
+  );
 
   const runDate = new Date(report.run_started_at).toLocaleString();
   const duration = Math.round(

@@ -74,6 +74,7 @@ export default function RunSearchPage({ params }: { params: Promise<{ id: string
       router.push(`/reports/${data.reportId}`);
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : 'Network error');
+      setErrorCode('network_error');
       setStatus('error');
     }
   }
@@ -150,7 +151,7 @@ export default function RunSearchPage({ params }: { params: Promise<{ id: string
           <p className="mb-4 text-zinc-600">
             This will search the web for real job postings matching your profile.
             {profile &&
-              ` The search runs for up to ${Math.round(profile.time_budget_seconds / 60)} minute${profile.time_budget_seconds >= 120 ? 's' : ''}.`}
+              ` It can take up to ${Math.round(profile.time_budget_seconds / 60)} minute${profile.time_budget_seconds >= 120 ? 's' : ''} — you'll be taken to the report right away and it will update automatically when the search finishes.`}
           </p>
           <button
             onClick={startSearch}
@@ -163,10 +164,7 @@ export default function RunSearchPage({ params }: { params: Promise<{ id: string
 
       {status === 'running' && (
         <div className="text-zinc-600">
-          <p className="animate-pulse">Searching the web for job postings…</p>
-          <p className="mt-1 text-sm text-zinc-400">
-            This may take a few minutes. The report will open automatically when done.
-          </p>
+          <p className="animate-pulse">Starting your search…</p>
         </div>
       )}
 
@@ -206,10 +204,16 @@ export default function RunSearchPage({ params }: { params: Promise<{ id: string
             {errorCode === 'rate_limit' && (
               <>Too many requests right now. Please wait a moment and try again.</>
             )}
+            {errorCode === 'network_error' && (
+              <>
+                Couldn&apos;t reach the server{errorMsg ? ` (${errorMsg})` : ''}. Check your
+                connection and try again.
+              </>
+            )}
             {(errorCode === 'api_error' || errorCode === 'generic' || !errorCode) && (
               <>
-                The search couldn&apos;t be completed. Please try again. If it keeps
-                happening, check your API key and account at{' '}
+                {errorMsg || "The search couldn't be completed. Please try again."} If it
+                keeps happening, check your API key and account at{' '}
                 <a
                   href="https://platform.claude.com"
                   target="_blank"

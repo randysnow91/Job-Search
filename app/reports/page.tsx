@@ -55,14 +55,22 @@ export default async function ReportsPage() {
                     <div className="min-w-0">
                       <p className="font-medium text-zinc-900">{profileName}</p>
                       <p className="mt-0.5 text-sm text-zinc-500">{runDate}</p>
-                      <p className="mt-1 text-sm text-zinc-600">{report.overview}</p>
+                      {report.status === 'running' ? (
+                        <p className="mt-1 text-sm text-zinc-500 animate-pulse">Searching…</p>
+                      ) : report.status === 'error' ? (
+                        <p className="mt-1 text-sm text-red-700">Search failed</p>
+                      ) : (
+                        <p className="mt-1 text-sm text-zinc-600">{report.overview}</p>
+                      )}
                     </div>
-                    <div className="shrink-0 text-right">
-                      <p className="text-sm font-medium text-zinc-900">
-                        {report.jobs_found} job{report.jobs_found !== 1 ? 's' : ''}
-                      </p>
-                      <p className="mt-0.5 text-xs text-zinc-400">{stopLabel}</p>
-                    </div>
+                    {report.status === 'complete' && (
+                      <div className="shrink-0 text-right">
+                        <p className="text-sm font-medium text-zinc-900">
+                          {report.jobs_found} job{report.jobs_found !== 1 ? 's' : ''}
+                        </p>
+                        <p className="mt-0.5 text-xs text-zinc-400">{stopLabel}</p>
+                      </div>
+                    )}
                   </div>
                 </Link>
               </li>
