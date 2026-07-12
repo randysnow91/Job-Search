@@ -33,6 +33,9 @@ export interface Report {
   overview: string;
   stopped_reason: string;
   jobs_found: number;
+  status: 'running' | 'complete' | 'error';
+  error_message: string | null;
+  error_code: string | null;
   created_at: string;
 }
 
