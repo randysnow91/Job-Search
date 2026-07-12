@@ -1,6 +1,6 @@
 # Claude Code Build Spec — Job Search Agent App
 
-**Status:** v2.1 — V1 COMPLETE (build/implementation spec)
+**Status:** v2.2 — V1 COMPLETE (build/implementation spec)
 **Derived from:** `job-search-app-PRD.md` (the product document — read it first)
 **Audience:** Claude Code (the coding agent) + the builder (product owner)
 
@@ -18,6 +18,7 @@
 | v1.9    | 2026-07-10 | Verification stays OFF for V1: testing showed it's instructional (model-dependent), not code-enforced, so it doesn't reliably check the final result set (closed jobs reached the report). Documented the honest finding, kept the "results may be unverified" posture for V1, and specified the V2 fix as a code-enforced post-search verification pass (with its honest limits). Recorded the judgment-vs-guarantee design lesson. Noted a secondary logging bug (tool_use vs server_tool_use). PRD unaffected. |
 | v2.0    | 2026-07-10 | V1 COMPLETE. All milestones M0–M9 built, deployed to Render, and verified end-to-end on the live site via a full stranger-journey test (fresh signup → home → profile → own API key → search → report). Fixed a fresh-login redirect bug found in live testing. Recorded one deferred V1 limitation: context-aware report back-link (V2). PRD unaffected. |
 | v2.1    | 2026-07-12 | Mobile fix (V1): re-architected search to run asynchronously — run route returns a reportId fast, search runs in the background, report page polls status — so it survives mobile connection interruptions (screen lock / backgrounding). Added status + error_message columns to reports. Also fixed an error-display bug where a captured error wasn't shown. Verified on a real phone via deliberate screen-lock mid-search. PRD unaffected. |
+| v2.2    | 2026-07-12 | Consistency sweep after the v2.1 async change: updated §3.1, the §2 architecture diagram, and §6 (API routes) — all three still described the old synchronous/streamed-progress run model and contradicted the §5 async note. §6 also now documents the status-polling endpoint (previously missing). Added the pre-existing missing `created_at` column to the reports table in §4. PRD unaffected. |
 
 > **How to use this document.**
 > The PRD says *what* and *why*. This spec says *how, with what, and in what order*.
@@ -68,7 +69,8 @@ Server route (Render)  ── the SEARCH ENGINE (server-side) ──────
   │     → source discovery, read pages, gather candidates            │
   │  3. dedup + apply exclusion list                                 │
   │  4. matching/ranking (recall-first judgment) + "why" line        │
-  │  5. stream progress back; save the report                       │
+  │  5. save the report (runs in the background — request already   │
+  │     returned; client polls for status)                          │
   │  API key held in memory for THIS run only, then discarded       │
   └─────────────────────────────────────────────────────────────────┘
   │
@@ -89,10 +91,15 @@ host was chosen*: Render runs a **persistent server**, so a request can run far 
 as first-class service types**. The platform constraint that would have shaped the
 architecture on serverless simply isn't there.
 
-**Decision for V1:** run the search **synchronously with streamed progress** on the
-Render web service, with a **configurable time budget** (the budget now exists for *cost*
-control — PRD §7.1 — not because the platform forces it). Start with a modest budget and
-raise it once it's stable. No queue or separate worker needed to ship V1.
+**Decision for V1:** run the search **in the background** on the persistent Render web
+service — the run request returns a `reportId` quickly, and the report page **polls**
+for status/completion rather than the browser holding one long-lived connection open
+(see §5's async note). This is only possible *because* the host is a persistent server:
+a normal Node process keeps a fire-and-forget async task running after its response is
+sent, which a serverless function cannot. A **configurable time budget** still bounds
+each run (the budget exists for *cost* control — PRD §7.1 — not because the platform
+forces it). Start with a modest budget and raise it once it's stable. No queue or
+separate worker needed to ship V1 — background execution happens in-process.
 
 **Upgrade path (deeper runs + V2 scheduling):** move the engine into a **Render
 background worker**, triggered on demand and, for V2, on a **Render cron schedule**. Same
@@ -142,6 +149,7 @@ multi-user from day one, even while V1 is used by one person.
 - `status` ("running" | "complete" | "error")
 - `error_message` (text | null)
 - `error_code` (text | null — "auth_error" | "billing_error" | "rate_limit" | "api_error" | "generic"; drives the specific error message shown on the report page)
+- `created_at`
 
 **`results`** (one row per job in a report)
 - `id`, `report_id`, `user_id`
@@ -231,11 +239,17 @@ LinkedIn). Public search results and companies' own career pages are the right s
 
 ## 6. API Routes (V1)
 
-- `POST /api/search/run` — body: `{ profileId, apiKey }`. Runs the engine, streams
-  progress, persists the report. The **only** place the API key is accepted; it is used
-  and discarded (see §7).
+- `POST /api/search/run` — body: `{ profileId, apiKey }`. Validates the profile + key,
+  creates the `reports` row (`status: 'running'`), kicks off the search in the
+  background, and returns `{ reportId }` quickly — it does **not** stream progress or
+  wait for the search to finish (see §5's async note). The **only** place the API key
+  is accepted; it is used and discarded (see §7).
 - `GET /api/reports?profileId=` — list reports for a profile.
 - `GET /api/reports/:id` — one report with results.
+- `GET /api/reports/:id/status` — polled by the report page while a run is in
+  progress; returns `{ status, errorCode, errorMessage }` (`status` is
+  `'running' | 'complete' | 'error'`; `errorCode`/`errorMessage` are populated only
+  when `status` is `'error'`).
 - `POST /api/results/:id/save` — mark a result saved.
 - `POST /api/results/:id/exclude` — body `{ reason }`. Add to global exclusions
   (applied | dismissed) and gray it out in place in the active report view (it is NOT removed — see §8)
