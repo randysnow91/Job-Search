@@ -77,7 +77,7 @@ The full product and technical reasoning lives in two versioned documents:
 - **[`docs/PRD.md`](docs/PRD.md)** — the product requirements document.
   Defines what the app does, why, and the acceptance criteria for V1. Written
   before any code.
-- **[`docs/BUILD-SPEC.md`](docs/BUILD-SPEC.md)** — the build spec derived
+- **[`docs/V1_BUILD-SPEC.md`](docs/V1_BUILD-SPEC.md)** — the build spec derived
   from the PRD. Records implementation decisions, architecture tradeoffs,
   the milestone plan, and notes from testing. Updated at each milestone.
 
@@ -113,7 +113,7 @@ confirm a posting is still open before applying. A code-enforced verification
 pass is the priority V2 item. The report back-link is also fixed rather than
 context-aware (it always returns to Profiles regardless of where you came from).
 Both are deliberate decisions, not accidents — the full detail and V2 roadmap
-live in [docs/BUILD-SPEC.md §14](docs/BUILD-SPEC.md).
+live in [docs/V1_BUILD-SPEC.md §14](docs/V1_BUILD-SPEC.md).
 
 ---
 
