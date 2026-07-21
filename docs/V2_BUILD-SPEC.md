@@ -102,15 +102,16 @@ A separate Render app instance will be created (before M0) pointing to the stagi
 5. **Profile Name:** Make **mandatory** — user cannot save profile without naming it.
    - Error message: "Profile name is required."
    
-6. **Remote Only:** Clarify what "remote" means with a helper message.
+6. **Remote:** Clarify what "remote" means with a helper message.
    - Add a tooltip or inline note: **"Remote searches for jobs listed as 'remote' which means 'work from home.'"**
-   - Place it near the Remote Only toggle.
+   - Place it near the "Remote" option in the existing location radio group (remote / city / both).
+   - The radio group structure is unchanged — this is a text-only addition, not a UI conversion.
 
 #### 3.0.2 Technical Details
 - These changes are **client-side validation + UI updates** (form defaults, required field checks, helper text).
 - No database changes.
 - No API changes.
-- **Mobile consideration:** Ensure the "Remote Only" tooltip / helper is readable on a phone (no tiny text, tap-friendly).
+- **Mobile consideration:** Ensure the "Remote" tooltip / helper is readable on a phone (no tiny text, tap-friendly).
 
 #### 3.0.3 Definition of Done
 - [ ] Search Time Budget defaults to 3 minutes on new profiles.
@@ -118,7 +119,7 @@ A separate Render app instance will be created (before M0) pointing to the stagi
 - [ ] Keywords field accepts null; no error if empty.
 - [ ] Target Position field is marked required; form prevents save if empty; error message displays on-submit.
 - [ ] Profile Name field is marked required; form prevents save if empty; error message displays on-submit.
-- [ ] Remote Only toggle has a clear, readable helper message explaining "work from home, not relocation."
+- [ ] Remote radio option has a clear, readable helper message explaining "work from home, not relocation." Radio group structure (remote / city / both) is unchanged.
 - [ ] All changes work on mobile (phone + tablet in portrait and landscape).
 - [ ] All changes work on desktop (PC/Mac, various browsers).
 - [ ] Tested locally; staged to staging Render; verified on staging before production.
