@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { SearchProfile } from '@/lib/types';
@@ -14,6 +14,10 @@ export default function ProfileForm({ profile, userId }: Props) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [positionsError, setPositionsError] = useState<string | null>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  const positionsTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const [name, setName] = useState(profile?.name ?? '');
   const [positions, setPositions] = useState(profile?.positions.join('\n') ?? '');
@@ -27,20 +31,37 @@ export default function ProfileForm({ profile, userId }: Props) {
   const [minPay, setMinPay] = useState(profile?.filters.min_pay?.toString() ?? '');
   const [maxJobs, setMaxJobs] = useState(profile?.max_jobs?.toString() ?? '');
   const [timeBudgetMinutes, setTimeBudgetMinutes] = useState(
-    Math.round((profile?.time_budget_seconds ?? 300) / 60).toString()
+    Math.round((profile?.time_budget_seconds ?? 180) / 60).toString()
   );
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setSaving(true);
     setError(null);
+    setNameError(null);
+    setPositionsError(null);
+
+    if (!name.trim()) {
+      setNameError('Profile name is required.');
+      nameInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      nameInputRef.current?.focus();
+      return;
+    }
+    const positionList = positions.split('\n').map((p) => p.trim()).filter(Boolean);
+    if (positionList.length === 0) {
+      setPositionsError('Please select at least one target position.');
+      positionsTextareaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      positionsTextareaRef.current?.focus();
+      return;
+    }
+
+    setSaving(true);
 
     const supabase = createClient();
 
     const data = {
       user_id: userId,
       name: name.trim(),
-      positions: positions.split('\n').map((p) => p.trim()).filter(Boolean),
+      positions: positionList,
       industry: industry.trim(),
       keywords: keywords.split(',').map((k) => k.trim()).filter(Boolean),
       location: {
@@ -52,7 +73,7 @@ export default function ProfileForm({ profile, userId }: Props) {
         ...(minPay ? { min_pay: parseInt(minPay) } : {}),
       },
       max_jobs: maxJobs.trim() ? parseInt(maxJobs) : null,
-      time_budget_seconds: (parseInt(timeBudgetMinutes) || 5) * 60,
+      time_budget_seconds: (parseInt(timeBudgetMinutes) || 3) * 60,
     };
 
     const result = profile
@@ -81,13 +102,14 @@ export default function ProfileForm({ profile, userId }: Props) {
       <div>
         <label className="block text-sm font-medium text-zinc-700">Profile name</label>
         <input
+          ref={nameInputRef}
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          required
           placeholder="e.g. Senior Backend Engineer"
           className="mt-1 block w-full rounded border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none"
         />
+        {nameError && <p className="mt-1 text-xs text-red-600">{nameError}</p>}
       </div>
 
       <div>
@@ -96,12 +118,14 @@ export default function ProfileForm({ profile, userId }: Props) {
           <span className="font-normal text-zinc-500">(one per line, top = most preferred)</span>
         </label>
         <textarea
+          ref={positionsTextareaRef}
           value={positions}
           onChange={(e) => setPositions(e.target.value)}
           rows={4}
           placeholder={"Senior Software Engineer\nStaff Engineer\nTech Lead"}
           className="mt-1 block w-full rounded border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none"
         />
+        {positionsError && <p className="mt-1 text-xs text-red-600">{positionsError}</p>}
       </div>
 
       <div>
@@ -133,16 +157,23 @@ export default function ProfileForm({ profile, userId }: Props) {
         <label className="block text-sm font-medium text-zinc-700">Location preference</label>
         <div className="mt-2 space-y-2">
           {(['remote', 'city', 'both'] as const).map((mode) => (
-            <label key={mode} className="flex items-center gap-2 text-sm">
-              <input
-                type="radio"
-                name="locationMode"
-                value={mode}
-                checked={locationMode === mode}
-                onChange={() => setLocationMode(mode)}
-              />
-              {mode === 'remote' ? 'Remote only' : mode === 'city' ? 'Specific city' : 'Remote or city'}
-            </label>
+            <div key={mode}>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="locationMode"
+                  value={mode}
+                  checked={locationMode === mode}
+                  onChange={() => setLocationMode(mode)}
+                />
+                {mode === 'remote' ? 'Remote only' : mode === 'city' ? 'Specific city' : 'Remote or city'}
+              </label>
+              {mode === 'remote' && (
+                <p className="ml-6 mt-1 text-xs text-zinc-500">
+                  Remote searches for jobs listed as &quot;remote,&quot; which means &quot;work from home.&quot;
+                </p>
+              )}
+            </div>
           ))}
         </div>
         {locationMode !== 'remote' && (
