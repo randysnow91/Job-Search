@@ -1,12 +1,13 @@
 # Claude Code Build Spec — Job Search Agent V2
 
-**Status:** v1.0 — V2 PLANNING (build/implementation spec)  
+**Status:** v1.1 — V2 PLANNING (build/implementation spec)  
 **Derived from:** `V1_BUILD-SPEC.md` (V1, completed) and `PRD.md` (product requirements)  
 **Audience:** Claude Code (the coding agent) + the builder (product owner)
 
 | Version | Date       | Summary |
 |---------|------------|---------|
 | v1.0    | 2026-07-20 | V2 spec created; M0 (UX improvements) through M4 (password reset) outlined; build instructions established |
+| v1.1    | 2026-07-22 | M0: inline error messages and auto-scroll |
 
 > **How to use this document.**
 > V1's BUILD-SPEC describes a completed release. This spec outlines V2 features—building on V1's architecture and stack.
@@ -98,9 +99,15 @@ A separate Render app instance will be created (before M0) pointing to the stagi
    
 4. **Target Position:** Make **mandatory** — user cannot save profile without at least one position listed.
    - Error message: "Please select at least one target position."
+   - Error displays directly below the Target Position field, not in a page-level banner.
    
 5. **Profile Name:** Make **mandatory** — user cannot save profile without naming it.
    - Error message: "Profile name is required."
+   - Error displays directly below the Profile Name field, not in a page-level banner.
+
+5a. **Error visibility on save:** When Save/Create is clicked and validation fails, the page automatically scrolls the offending field into view (the user should never have to hunt for the error).
+   - If both Profile Name and Target Position are invalid at once, Profile Name is checked first (it's higher in the form) and is the one scrolled to / reported.
+   - This applies only to these two field-level validations. Server/save errors (e.g. a Supabase failure) continue to display in the existing top-of-form banner, since they aren't tied to a single field.
    
 6. **Remote:** Clarify what "remote" means with a helper message.
    - Add a tooltip or inline note: **"Remote searches for jobs listed as 'remote' which means 'work from home.'"**
@@ -117,8 +124,9 @@ A separate Render app instance will be created (before M0) pointing to the stagi
 - [ ] Search Time Budget defaults to 3 minutes on new profiles.
 - [ ] Industry field accepts null; internal default to "All" is applied at search time.
 - [ ] Keywords field accepts null; no error if empty.
-- [ ] Target Position field is marked required; form prevents save if empty; error message displays on-submit.
-- [ ] Profile Name field is marked required; form prevents save if empty; error message displays on-submit.
+- [ ] Target Position field is marked required; form prevents save if empty; error message displays directly below the field on-submit.
+- [ ] Profile Name field is marked required; form prevents save if empty; error message displays directly below the field on-submit.
+- [ ] On a failed save due to Profile Name or Target Position being empty, the page auto-scrolls to bring the offending field into view (Profile Name takes priority if both are invalid).
 - [ ] Remote radio option has a clear, readable helper message explaining "work from home, not relocation." Radio group structure (remote / city / both) is unchanged.
 - [ ] All changes work on mobile (phone + tablet in portrait and landscape).
 - [ ] All changes work on desktop (PC/Mac, various browsers).
