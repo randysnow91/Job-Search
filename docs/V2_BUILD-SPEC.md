@@ -1,6 +1,6 @@
 # Claude Code Build Spec — Job Search Agent V2
 
-**Status:** v1.1 — V2 PLANNING (build/implementation spec)  
+**Status:** v1.2 — V2 PLANNING (build/implementation spec)  
 **Derived from:** `V1_BUILD-SPEC.md` (V1, completed) and `PRD.md` (product requirements)  
 **Audience:** Claude Code (the coding agent) + the builder (product owner)
 
@@ -8,6 +8,7 @@
 |---------|------------|---------|
 | v1.0    | 2026-07-20 | V2 spec created; M0 (UX improvements) through M4 (password reset) outlined; build instructions established |
 | v1.1    | 2026-07-22 | M0: inline error messages and auto-scroll |
+| v1.2    | 2026-07-30 | Scope reduction: removed Streaming (M1) and Scheduling + Run Queue (M3); Verification and Password Reset renumbered to M1 and M2 |
 
 > **How to use this document.**
 > V1's BUILD-SPEC describes a completed release. This spec outlines V2 features—building on V1's architecture and stack.
@@ -76,7 +77,7 @@ A separate Render app instance will be created (before M0) pointing to the stagi
 
 ### 2.3 Milestone Release Cadence
 - **M0 (UX improvements):** Ship this week (testing + staging + production).
-- **M1–M4 (larger features):** One at a time, each tested in staging before production.
+- **M1–M2 (larger features):** One at a time, each tested in staging before production.
 - No big release events. Each milestone is a separate, incremental deployment.
 
 ---
@@ -140,31 +141,17 @@ A separate Render app instance will be created (before M0) pointing to the stagi
 
 ---
 
-### 3.1 M1: Streaming for True Partial Results
-**Goal:** Capture results as they stream from the model, so a run cut off mid-response still returns what was found.
+### 3.1 M1: Reliable Verification (Code-Enforced Post-Search Verification Pass)
+**Goal:** After search assembles its final candidate list, verify each job URL is still open—code-enforced, not left to model discretion.
 
 **Status:** Not yet detailed. Will be specified once M0 is live.
 
 ---
 
-### 3.2 M2: Reliable Verification (Code-Enforced Post-Search Verification Pass)
-**Goal:** After search assembles its final candidate list, verify each job URL is still open—code-enforced, not left to model discretion.
-
-**Status:** Not yet detailed. Will be specified once M1 is live.
-
----
-
-### 3.3 M3: Scheduling + Run Queue
-**Goal:** Allow users to schedule a search profile to run at a set time (e.g., 5am) using Render cron + background worker. Queue ensures no two runs overlap.
-
-**Status:** Not yet detailed. Includes key-storage decision flagged in V1 BUILD-SPEC §7.3 fork.
-
----
-
-### 3.4 M4: Password Reset (Account Management Priority)
+### 3.2 M2: Password Reset (Account Management Priority)
 **Goal:** Enable users to self-serve reset a forgotten password—the highest-priority item in account management.
 
-**Status:** Not yet detailed. Will be specified once M3 is live.
+**Status:** Not yet detailed. Will be specified once M1 is live.
 
 ---
 
@@ -241,7 +228,7 @@ job-search-agent/
 2. ⏳ **Set up Render staging instance** (before M0).
 3. ⏳ **Create staging branch on GitHub** (before M0).
 4. ⏳ **M0: UX improvements** (this week).
-5. ⏳ **M1–M4:** Ship incrementally, one at a time.
+5. ⏳ **M1–M2:** Ship incrementally, one at a time.
 
 ---
 
