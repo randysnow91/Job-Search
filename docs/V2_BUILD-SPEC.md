@@ -1,6 +1,6 @@
 # Claude Code Build Spec — Job Search Agent V2
 
-**Status:** v1.3 — V2 PLANNING (build/implementation spec)  
+**Status:** v1.4 — M1 IMPLEMENTED (verified on staging-equivalent local testing)  
 **Derived from:** `V1_BUILD-SPEC.md` (V1, completed) and `PRD.md` (product requirements)  
 **Audience:** Claude Code (the coding agent) + the builder (product owner)
 
@@ -10,6 +10,7 @@
 | v1.1    | 2026-07-22 | M0: inline error messages and auto-scroll |
 | v1.2    | 2026-07-30 | Scope reduction: removed Streaming (M1) and Scheduling + Run Queue (M3); Verification and Password Reset renumbered to M1 and M2 |
 | v1.3    | 2026-07-30 | M1 detailed: code-enforced one-job-at-a-time verification, time-budget-bounded adaptive re-search, "Validate jobs" checkbox |
+| v1.4    | 2026-07-31 | M1 implemented and verified. Root-caused a `web_fetch` caching bug (stale snapshots up to months old) via testing; fixed with `web_fetch_20260318` + `use_cache: false`. Verification prompt rewritten to require positive confirmation rather than pattern-matching known "closed" phrasings. |
 
 > **How to use this document.**
 > V1's BUILD-SPEC describes a completed release. This spec outlines V2 features—building on V1's architecture and stack.
@@ -173,7 +174,8 @@ A separate Render app instance will be created (before M0) pointing to the stagi
 
 #### 3.1.2 Technical Details
 - New file: `lib/verify.ts` — houses `verifyOneJob()` (single job, single API call) and a sequential driver that loops over jobs and passes.
-- Model: Haiku 4.5, the same tier already used for ranking — cheap and sufficient for a binary open/closed judgment. Enable the `web_fetch` tool on that call so the model can retrieve the actual job page.
+- Model: Haiku 4.5, the same tier already used for ranking — cheap and sufficient for a binary open/closed judgment. Enable the `web_fetch_20260318` tool on that call, with `allowed_callers: ['direct']` (required for Haiku) and **`use_cache: false`**. The cache bypass is load-bearing: `web_fetch`'s default caching was confirmed in testing to return page snapshots up to several months stale, which made "open" verdicts unreliable for jobs that had since closed — `use_cache: false` forces a fresh fetch every call.
+- The verification prompt defaults to CLOSED and requires the model to positively confirm three things (the specific job title is shown, it's presented as currently live, a real apply mechanism is attached) rather than scanning for known "closed" phrasings — this generalizes better across the many different ways companies signal a dead posting (explicit messages, 404s, generic redirects, custom-branded error pages).
 - Time-budget tracking spans the entire verify + re-search flow, using the same elapsed/remaining-time pattern already used in `lib/search.ts` (`Date.now()` measured against `profile.time_budget_seconds`).
 - Reserve threshold: **60 seconds**, flat (not a percentage of the budget). No further pass starts once remaining time drops below this, regardless of survival rate.
 - New database column: `search_profiles.validate_jobs` (boolean, default `false`) — required, since this is a persisted per-profile setting. Unlike M0, this milestone is **not** schema-free.
@@ -203,6 +205,7 @@ A separate Render app instance will be created (before M0) pointing to the stagi
 - Turning on verification increases both search time and Anthropic API cost roughly in proportion to job count — disclosed to the user via the checkbox helper text, not hidden.
 - The existing `VERIFICATION_ENABLED` env-var mechanism in `lib/search.ts` (model self-verification during the main search loop) is untouched by this milestone; it's a separate, weaker mechanism, and the two are not reconciled here.
 - Pass count is not bounded by a fixed number — only by the time budget and the stopping conditions above. The 60-second reserve and the profile's own time budget are the only hard limits on how many passes can run.
+- **`web_fetch` does not execute client-side JavaScript.** Some career sites (e.g. Ashby-hosted boards) return only a bare loading shell (e.g. "You need to enable JavaScript to run this app.") with no server-rendered job content at all. When this happens, the model cannot positively confirm the job is open, so per the prompt's "default to CLOSED" rule, it's marked closed rather than guessed open. This trades away some recall on JS-only sites (a genuinely open posting may be hidden) in exchange for never confidently showing a dead link — the correct failure direction for this milestone's goal, but a real, disclosed limitation, not a defect to chase further within M1.
 
 ---
 
