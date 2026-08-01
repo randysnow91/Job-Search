@@ -95,7 +95,22 @@ Fetch the URL and determine if this posting is still open.`;
         { signal }
       );
 
+      console.log(
+        `[verify] "${job.title}" turn ${turn + 1} stop_reason: ${response.stop_reason}, content blocks: ${response.content.length} (${response.content.map((b) => b.type).join(', ')})`
+      );
+
+      // TEMP diagnostic (round 2): re-checking a specific recurring false-positive
+      // (Capital One's whimsical "Oops!" error page) even after the cache-bypass fix.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const fetchResultBlocks = (response.content as any[]).filter((b) => b.type === 'web_fetch_tool_result');
+      for (const block of fetchResultBlocks) {
+        console.log(`[verify] "${job.title}" web_fetch_tool_result:`, JSON.stringify(block).slice(0, 2000));
+      }
+
       const textBlocks = response.content.filter((b): b is Anthropic.TextBlock => b.type === 'text');
+      if (textBlocks.length > 0) {
+        console.log(`[verify] "${job.title}" raw verdict text: ${textBlocks[textBlocks.length - 1].text.slice(0, 300)}`);
+      }
       const verdict = textBlocks.length > 0 ? parseVerdict(textBlocks[textBlocks.length - 1].text) : null;
       if (verdict) return verdict.status;
 
