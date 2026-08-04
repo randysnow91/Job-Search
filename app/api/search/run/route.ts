@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 import { runSearch } from '@/lib/search';
 import { deduplicateResults } from '@/lib/dedup';
 import { rankResults } from '@/lib/rank';
+import { verifyWithAdaptiveResearch } from '@/lib/verify';
 import type { SearchProfile, RankedResult } from '@/lib/types';
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -95,6 +96,7 @@ async function runSearchInBackground(
   apiKey: string,
   excludedIdentities: Set<string>
 ) {
+  const runStartMs = Date.now();
   try {
     const searchResult = await runSearch(profile, apiKey);
     const finishedAt = new Date();
@@ -111,7 +113,11 @@ async function runSearchInBackground(
       );
     }
 
-    const rankedResults = await rankResults(profile, filteredResults, apiKey);
+    const verifiedResults = profile.validate_jobs
+      ? (await verifyWithAdaptiveResearch(profile, apiKey, filteredResults, runStartMs, excludedIdentities)).results
+      : filteredResults;
+
+    const rankedResults = await rankResults(profile, verifiedResults, apiKey);
 
     const overview = buildOverview(profile, rankedResults.length, searchResult.stoppedReason);
     const locationDisplay = buildLocationDisplay(profile);

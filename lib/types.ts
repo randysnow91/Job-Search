@@ -83,6 +83,7 @@ export interface SearchProfile {
   };
   max_jobs: number | null;
   time_budget_seconds: number;
+  validate_jobs: boolean;
   created_at: string;
   updated_at: string;
 }

@@ -33,6 +33,7 @@ export default function ProfileForm({ profile, userId }: Props) {
   const [timeBudgetMinutes, setTimeBudgetMinutes] = useState(
     Math.round((profile?.time_budget_seconds ?? 180) / 60).toString()
   );
+  const [validateJobs, setValidateJobs] = useState(profile?.validate_jobs ?? false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -74,6 +75,7 @@ export default function ProfileForm({ profile, userId }: Props) {
       },
       max_jobs: maxJobs.trim() ? parseInt(maxJobs) : null,
       time_budget_seconds: (parseInt(timeBudgetMinutes) || 3) * 60,
+      validate_jobs: validateJobs,
     };
 
     const result = profile
@@ -247,6 +249,20 @@ export default function ProfileForm({ profile, userId }: Props) {
         />
         <p className="mt-1 text-xs text-zinc-500">
           A stopping point. If you only have time to review, say, 10 jobs a day, set that here and the search stops once it finds them — no sense paying to find more than you&apos;ll read. Leave blank to search the whole time budget.
+        </p>
+      </div>
+
+      <div>
+        <label className="flex items-center gap-2 text-sm font-medium text-zinc-700">
+          <input
+            type="checkbox"
+            checked={validateJobs}
+            onChange={(e) => setValidateJobs(e.target.checked)}
+          />
+          Validate jobs
+        </label>
+        <p className="mt-1 text-xs text-zinc-500">
+          If checked, the system will validate that found jobs are still open. Warning: this takes more time and costs more money.
         </p>
       </div>
 

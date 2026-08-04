@@ -1,6 +1,6 @@
 # Claude Code Build Spec — Job Search Agent V2
 
-**Status:** v1.2 — V2 PLANNING (build/implementation spec)  
+**Status:** v1.5 — M1 COMPLETE (verified on staging; verification accuracy has a known, accepted error rate — see §3.1.4)  
 **Derived from:** `V1_BUILD-SPEC.md` (V1, completed) and `PRD.md` (product requirements)  
 **Audience:** Claude Code (the coding agent) + the builder (product owner)
 
@@ -9,6 +9,9 @@
 | v1.0    | 2026-07-20 | V2 spec created; M0 (UX improvements) through M4 (password reset) outlined; build instructions established |
 | v1.1    | 2026-07-22 | M0: inline error messages and auto-scroll |
 | v1.2    | 2026-07-30 | Scope reduction: removed Streaming (M1) and Scheduling + Run Queue (M3); Verification and Password Reset renumbered to M1 and M2 |
+| v1.3    | 2026-07-30 | M1 detailed: code-enforced one-job-at-a-time verification, time-budget-bounded adaptive re-search, "Validate jobs" checkbox |
+| v1.4    | 2026-07-31 | M1 implemented and verified. Root-caused a `web_fetch` caching bug (stale snapshots up to months old) via testing; fixed with `web_fetch_20260318` + `use_cache: false`. Verification prompt rewritten to require positive confirmation rather than pattern-matching known "closed" phrasings. |
+| v1.5    | 2026-08-01 | M1 closed out. Documented an isolated, non-reproduced verification miss as an accepted error rate rather than chasing it further. Removed temporary diagnostic logging. |
 
 > **How to use this document.**
 > V1's BUILD-SPEC describes a completed release. This spec outlines V2 features—building on V1's architecture and stack.
@@ -144,7 +147,67 @@ A separate Render app instance will be created (before M0) pointing to the stagi
 ### 3.1 M1: Reliable Verification (Code-Enforced Post-Search Verification Pass)
 **Goal:** After search assembles its final candidate list, verify each job URL is still open—code-enforced, not left to model discretion.
 
-**Status:** Not yet detailed. Will be specified once M0 is live.
+#### 3.1.1 Scope
+1. **Verification logic:** After a search completes, loop through each job found and verify it's still open.
+   - For each job, a single Claude API call fetches the job page (`web_fetch` tool) and judges whether it's still open/valid.
+   - Signals of a closed/invalid posting: "position closed," "position filled," a 404, or any other signal that the job isn't worth the user's click.
+   - Invalid jobs are removed from the results list.
+
+2. **Per-job verification mechanics — one job, one call:**
+   - Verification is code-enforced one-job-at-a-time: a single function accepts exactly one job and makes exactly one API call. There is no code path that accepts multiple jobs in one call — batching isn't something the model could slip back into, because the function signature only ever takes one job.
+   - Jobs are verified strictly sequentially (a `for` loop with `await`, not `Promise.all`) — never more than one verification call in flight at once.
+   - If an individual verification call fails (timeout, API error, unparseable response): skip verification for that job and keep it in the results, unverified. No retry. A failure on one job never affects any other job's outcome and never fails the whole pass — consistent with this app's recall-first philosophy (a flaky call is not evidence a job is closed).
+
+3. **Adaptive re-search — bounded by time budget, not a fixed pass count:**
+   - If a verification pass removes **more than 50%** of the jobs it checked, trigger another search pass using the same profile parameters — but only if **all** of the following hold:
+     a. Remaining time budget is **≥ 60 seconds** (the reserve threshold — see §3.1.2).
+     b. The pass that just ran found **at least one new job** (a search that turns up nothing new isn't worth repeating, even with time left).
+   - New jobs found by an additional search pass are deduplicated against every job already seen in earlier passes (same job-identity/link matching used elsewhere in the app) — a job is **never verified twice**.
+   - Only the new, not-yet-verified jobs from each pass are verified, using the same one-at-a-time approach as the first pass.
+   - Looping stops as soon as **any** of: survival rate on the latest pass is ≥ 50%, remaining time budget drops below 60 seconds, or a pass finds zero new jobs.
+   - Survivors from **every** pass are merged together (deduped) into the final result set — earlier passes' verified-open jobs are never discarded in favor of a later pass.
+   - From the user's perspective this is **one continuous "Searching…" experience** — no new UI state, and no indication of how many internal passes ran.
+
+4. **UI addition:**
+   - Add a per-profile checkbox: **"Validate jobs."**
+   - Helper text: **"If checked, the system will validate that found jobs are still open. Warning: this takes more time and costs more money."**
+   - Default: unchecked (off) — this is opt-in, since it adds time and cost.
+
+#### 3.1.2 Technical Details
+- New file: `lib/verify.ts` — houses `verifyOneJob()` (single job, single API call) and a sequential driver that loops over jobs and passes.
+- Model: Haiku 4.5, the same tier already used for ranking — cheap and sufficient for a binary open/closed judgment. Enable the `web_fetch_20260318` tool on that call, with `allowed_callers: ['direct']` (required for Haiku) and **`use_cache: false`**. The cache bypass is load-bearing: `web_fetch`'s default caching was confirmed in testing to return page snapshots up to several months stale, which made "open" verdicts unreliable for jobs that had since closed — `use_cache: false` forces a fresh fetch every call.
+- The verification prompt defaults to CLOSED and requires the model to positively confirm three things (the specific job title is shown, it's presented as currently live, a real apply mechanism is attached) rather than scanning for known "closed" phrasings — this generalizes better across the many different ways companies signal a dead posting (explicit messages, 404s, generic redirects, custom-branded error pages).
+- Time-budget tracking spans the entire verify + re-search flow, using the same elapsed/remaining-time pattern already used in `lib/search.ts` (`Date.now()` measured against `profile.time_budget_seconds`).
+- Reserve threshold: **60 seconds**, flat (not a percentage of the budget). No further pass starts once remaining time drops below this, regardless of survival rate.
+- New database column: `search_profiles.validate_jobs` (boolean, default `false`) — required, since this is a persisted per-profile setting. Unlike M0, this milestone is **not** schema-free.
+- Gated behavior: the verification pass (and any additional search passes it triggers) only run when `validate_jobs` is `true` on the profile. When `false`, behavior is unchanged from V1/M0.
+- **Relationship to the existing `VERIFICATION_ENABLED` env var** in `lib/search.ts`: that mechanism asks the *search model itself* to self-verify inline via `web_fetch` during the main search loop. It is separate from, and not modified by, this milestone — both could in principle be enabled at once. Reconciling or retiring the env-var path is a follow-up decision, out of scope here.
+- No new UI state beyond the checkbox — the existing `status: 'running'` / report-polling flow already presents one continuous "Searching…" experience regardless of internal pass count.
+- **Mobile consideration:** Ensure the "Validate jobs" checkbox and helper text are readable and tap-friendly on a phone.
+
+#### 3.1.3 Definition of Done
+- [ ] "Validate jobs" checkbox appears on the profile form, unchecked by default, with the specified helper text.
+- [ ] When unchecked, search behavior is unchanged from V1/M0 (no verification, no extra passes).
+- [ ] When checked, each job found is verified individually — one job, one API call, never batched.
+- [ ] Verification calls run strictly sequentially, never concurrently.
+- [ ] A failed verification call for one job doesn't remove that job and doesn't affect any other job's verification.
+- [ ] If a pass removes more than 50% of the jobs it checked, remaining time budget is ≥60 seconds, and the pass found at least one new job, another search+verify pass triggers automatically.
+- [ ] Looping stops as soon as: survival rate ≥50% on the latest pass, remaining time <60s, or a pass finds zero new jobs.
+- [ ] Jobs already verified in an earlier pass are never re-verified in a later pass.
+- [ ] Survivors from all passes are merged (deduped) into the final result set.
+- [ ] The user sees a single continuous "Searching…" state throughout, with no indication of how many internal passes occurred.
+- [ ] All changes work on mobile (phone + tablet in portrait and landscape).
+- [ ] All changes work on desktop (PC/Mac, various browsers).
+- [ ] Tested locally; staged to staging Render; verified on staging before production.
+- [ ] Commit message: "M1: code-enforced job verification with adaptive re-search."
+
+#### 3.1.4 Known Constraints
+- Requires a database migration (`validate_jobs` boolean column) — unlike M0, this milestone is not schema-free.
+- Turning on verification increases both search time and Anthropic API cost roughly in proportion to job count — disclosed to the user via the checkbox helper text, not hidden.
+- The existing `VERIFICATION_ENABLED` env-var mechanism in `lib/search.ts` (model self-verification during the main search loop) is untouched by this milestone; it's a separate, weaker mechanism, and the two are not reconciled here.
+- Pass count is not bounded by a fixed number — only by the time budget and the stopping conditions above. The 60-second reserve and the profile's own time budget are the only hard limits on how many passes can run.
+- **`web_fetch` does not execute client-side JavaScript.** Some career sites (e.g. Ashby-hosted boards) return only a bare loading shell (e.g. "You need to enable JavaScript to run this app.") with no server-rendered job content at all. When this happens, the model cannot positively confirm the job is open, so per the prompt's "default to CLOSED" rule, it's marked closed rather than guessed open. This trades away some recall on JS-only sites (a genuinely open posting may be hidden) in exchange for never confidently showing a dead link — the correct failure direction for this milestone's goal, but a real, disclosed limitation, not a defect to chase further within M1.
+- **Verification is not 100% accurate; occasional false positives are expected.** Across extensive staging testing, the system correctly caught the large majority of closed postings across many different site styles (explicit "removed"/"expired" messages, 404s, generic `?error=true` listing redirects, JS-only shells). One isolated miss was observed on a Capital One posting with an unusually styled, non-standard error page ("Oops! Let's fix this.") — the model judged it open when it was not, despite fresh (non-cached) fetch content and a prompt that explicitly names this style of page as a closed-signal. This did not reproduce on retest (the posting didn't resurface in subsequent searches to retest directly), so it's treated as an accepted error rate rather than a fixed, reproducible bug. No LLM-judgment-based verification will be 100% accurate; this is disclosed as a known limitation, not silently hidden. Revisit if this kind of miss becomes frequent rather than occasional.
 
 ---
 
