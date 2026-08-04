@@ -105,7 +105,7 @@ Search broadly, including smaller and regional employers. Output results as a JS
       const response: Anthropic.Message = await (client.messages as any).create(
         {
           model: SEARCH_MODEL,
-          max_tokens: 4096,
+          max_tokens: 8192,
           ...(THINKING_SUPPORTED ? { thinking: { type: 'adaptive' } } : {}),
           tools: [
             { type: 'web_search_20260209', name: 'web_search' },
@@ -145,7 +145,11 @@ Search broadly, including smaller and regional employers. Output results as a JS
         break;
       }
 
-      if (response.stop_reason === 'pause_turn') {
+      // max_tokens means the turn got cut off mid-generation (observed truncating a
+      // trailing text block on an otherwise-complete turn) rather than the model
+      // finishing naturally — resume it the same way as pause_turn instead of
+      // treating it as a terminal stop.
+      if (response.stop_reason === 'pause_turn' || response.stop_reason === 'max_tokens') {
         messages = [
           ...messages,
           { role: 'assistant', content: response.content },
