@@ -5,6 +5,14 @@ import type { JobResult, RankedResult, SearchProfile } from './types';
 // Haiku is sufficient for this task — no tools, just text-in/JSON-out.
 const RANK_MODEL = process.env.RANK_MODEL ?? 'claude-haiku-4-5-20251001';
 
+// Ranking is a plain text-in/JSON-out call with no tools — it should never
+// legitimately take more than a few seconds. Unlike search/verify, it isn't
+// bounded by the profile's time budget (it runs after that budget is spent),
+// so it needs its own fixed cap. A stall here falls through to the existing
+// catch block's fallback (original order, summary as why) rather than
+// hanging the background job indefinitely.
+const RANK_TIMEOUT_MS = 60_000;
+
 export async function rankResults(
   profile: SearchProfile,
   candidates: JobResult[],
@@ -70,11 +78,14 @@ Use the candidate NUMBER (from the list above) as "index". Include only qualifyi
 Ranked best-fit first. Omit candidates that fail the hard gate.`;
 
   try {
-    const response = await client.messages.create({
-      model: RANK_MODEL,
-      max_tokens: 2048,
-      messages: [{ role: 'user', content: prompt }],
-    });
+    const response = await client.messages.create(
+      {
+        model: RANK_MODEL,
+        max_tokens: 2048,
+        messages: [{ role: 'user', content: prompt }],
+      },
+      { signal: AbortSignal.timeout(RANK_TIMEOUT_MS) }
+    );
 
     const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === 'text');
     if (!textBlock) {
