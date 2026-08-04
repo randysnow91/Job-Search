@@ -75,6 +75,15 @@ Fetch the URL and determine if this posting is still open.`;
 
   let messages: Anthropic.MessageParam[] = [{ role: 'user', content: userPrompt }];
 
+  // Tracks whether web_fetch ever actually reached the page for this job, across all
+  // turns. A CLOSED verdict reached without a single successful fetch means the model
+  // never saw the page at all (blocked, bad URL, transient error) and is reasoning
+  // from "I couldn't confirm it's open" — which its own prompt correctly maps to
+  // CLOSED, but that's a fetch failure, not a confirmed-dead posting. Treated as
+  // 'unverified' below so it matches the same recall-first handling as an API-level
+  // failure, instead of silently dropping the job.
+  let hadSuccessfulFetch = false;
+
   try {
     for (let turn = 0; turn < MAX_VERIFY_TURNS; turn++) {
       // Cast needed: SDK types don't yet reflect the web_fetch_20260318 server-tool shape.
@@ -108,6 +117,7 @@ Fetch the URL and determine if this posting is still open.`;
           console.log(`[verify][diag] "${job.title}" @ ${job.company} — web_fetch ERROR (${result.error_code}) for ${job.link}`);
           continue;
         }
+        hadSuccessfulFetch = true;
         const source = result.content.source;
         const text = source.type === 'text' ? source.data : `(non-text content: ${source.type})`;
         console.log(
@@ -121,7 +131,15 @@ Fetch the URL and determine if this posting is still open.`;
         console.log(`[verify][diag] "${job.title}" @ ${job.company} — raw model text: ${textBlocks[textBlocks.length - 1].text}`);
       }
       const verdict = textBlocks.length > 0 ? parseVerdict(textBlocks[textBlocks.length - 1].text) : null;
-      if (verdict) return verdict.status;
+      if (verdict) {
+        if (verdict.status === 'closed' && !hadSuccessfulFetch) {
+          console.log(
+            `[verify][diag] "${job.title}" @ ${job.company} — overriding CLOSED to UNVERIFIED: verdict was reached without a single successful web_fetch`
+          );
+          return 'unverified';
+        }
+        return verdict.status;
+      }
 
       if (response.stop_reason === 'pause_turn') {
         messages = [
