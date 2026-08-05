@@ -24,17 +24,28 @@ export async function rankResults(
 
   const client = new Anthropic({ apiKey });
 
+  const targetCity = `${profile.location.city ?? 'the specified city'}${profile.location.region ? `, ${profile.location.region}` : ''}`;
   const locationDesc =
     profile.location.mode === 'remote'
       ? 'fully remote only'
       : profile.location.mode === 'city'
-      ? `on-site in or near ${profile.location.city ?? 'the specified city'}${profile.location.region ? `, ${profile.location.region}` : ''}`
-      : `remote or in ${profile.location.city ?? 'the specified city'}`;
+      ? `on-site in or near ${targetCity}`
+      : `remote or in ${targetCity}`;
+
+  // What makes a posting's location a hard-gate drop, per mode — mirrors locationDesc
+  // above but phrased as an exclusion rule for the prompt below.
+  const locationGateRule =
+    profile.location.mode === 'remote'
+      ? 'the candidate requires remote and the posting is explicitly office-only with no remote option'
+      : profile.location.mode === 'city'
+      ? `the candidate requires on-site work in or near ${targetCity}, and the posting's stated location is a different, unrelated place with no remote option offered`
+      : `the candidate accepts remote or on-site in or near ${targetCity}, and the posting's stated location is neither remote nor in/near ${targetCity}`;
 
   const candidateList = candidates
     .map((c, i) => {
       const salary = c.salary ? `salary: ${c.salary}` : 'salary: not listed';
-      return `${i + 1}. ${c.company} — ${c.title}\n   ${salary}\n   ${c.summary}`;
+      const location = c.location?.trim() ? c.location : 'not stated';
+      return `${i + 1}. ${c.company} — ${c.title}\n   location: ${location}\n   ${salary}\n   ${c.summary}`;
     })
     .join('\n\n');
 
@@ -50,7 +61,7 @@ CANDIDATE PROFILE:
 - Location: ${locationDesc}${profile.filters.min_pay ? `\n- Minimum pay: $${profile.filters.min_pay.toLocaleString()}` : ''}
 
 RECALL-FIRST RULES (critical — read before ranking):
-1. Hard gate — drop a job ONLY if location is genuinely incompatible: the candidate requires remote and the posting is explicitly office-only with no remote option. A mismatched title is NEVER a reason to drop a job.
+1. Hard gate — drop a job ONLY if location is genuinely incompatible: ${locationGateRule}. If a posting's location isn't stated ("not stated" above), do not drop it on location grounds alone. A mismatched title is NEVER a reason to drop a job.
 2. Light relevance floor — drop only jobs that are clearly unrelated to the candidate's field (e.g. a nursing role in a software engineering search). When in doubt, keep it.
 3. A stretch role — wrong title but matching skills — MUST appear in results. Do NOT bury it at the bottom. Over-demoting a good stretch is as bad as dropping it.
 
@@ -117,6 +128,7 @@ Ranked best-fit first. Omit candidates that fail the hard gate.`;
         salary: original.salary,
         source: original.source,
         link: original.link,
+        location: original.location,
         job_identity: original.job_identity,
       });
     }
@@ -145,6 +157,7 @@ function fallback(candidates: JobResult[]): RankedResult[] {
     salary: c.salary,
     source: c.source,
     link: c.link,
+    location: c.location,
     job_identity: c.job_identity,
   }));
 }
