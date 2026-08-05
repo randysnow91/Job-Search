@@ -13,6 +13,54 @@ const RANK_MODEL = process.env.RANK_MODEL ?? 'claude-haiku-4-5-20251001';
 // hanging the background job indefinitely.
 const RANK_TIMEOUT_MS = 60_000;
 
+// Normalizes for loose comparison: lowercase, strip punctuation, "st" -> "saint"
+// so "St. Louis" / "St Louis" / "Saint Louis" all match.
+function normalizeLocationText(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[^\w\s]/g, ' ')
+    .replace(/\bst\b/g, 'saint')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Deterministic backstop for the prompt's location hard gate (rule 1 above). The
+// model has twice, even after an explicit "mandatory exclusion" rewrite of the
+// prompt, included jobs it correctly identified as location-incompatible instead
+// of omitting them — so this can't be left to instruction-following alone. Only
+// filters when we have real location text to check; an unstated location is kept,
+// matching the prompt's own carve-out.
+function passesLocationGate(location: string | undefined, profile: SearchProfile): boolean {
+  const loc = location?.trim();
+  if (!loc) return true;
+
+  const normalized = normalizeLocationText(loc);
+  const isRemote = /\bremote\b/.test(normalized);
+
+  if (profile.location.mode === 'remote') return isRemote;
+
+  const targetCity = profile.location.city ? normalizeLocationText(profile.location.city) : '';
+  const matchesCity = targetCity.length > 0 && (normalized.includes(targetCity) || targetCity.includes(normalized));
+
+  // city and both modes: remote is never disqualifying, even for city-only
+  // candidates, matching the prompt's own "no remote option offered" carve-out.
+  return isRemote || matchesCity;
+}
+
+// Applies the location gate to a ranked list, logging what it drops so a run
+// where the model already excluded everything correctly shows zero drops here.
+function applyLocationGate(results: RankedResult[], profile: SearchProfile): RankedResult[] {
+  return results.filter((r) => {
+    const ok = passesLocationGate(r.location, profile);
+    if (!ok) {
+      console.log(
+        `[rank] location gate: dropped "${r.title}" at ${r.company} — location "${r.location}" incompatible with profile requirement`
+      );
+    }
+    return ok;
+  });
+}
+
 export async function rankResults(
   profile: SearchProfile,
   candidates: JobResult[],
@@ -103,13 +151,13 @@ Ranked best-fit first. Omit candidates that fail the hard gate.`;
     const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === 'text');
     if (!textBlock) {
       console.warn('[rank] no text block in response — using fallback');
-      return fallback(candidates);
+      return fallback(candidates, profile);
     }
 
     const items = parseJsonArray(textBlock.text);
     if (!items) {
       console.warn('[rank] could not parse ranked output — using fallback');
-      return fallback(candidates);
+      return fallback(candidates, profile);
     }
 
     // Look up each candidate by its 1-based index from the model output.
@@ -137,22 +185,24 @@ Ranked best-fit first. Omit candidates that fail the hard gate.`;
 
     if (results.length === 0) {
       console.warn('[rank] no valid results after index lookup — using fallback');
-      return fallback(candidates);
+      return fallback(candidates, profile);
     }
 
-    console.log(`[rank] done: ${results.length} results`);
-    return results;
+    const gated = applyLocationGate(results, profile);
+    console.log(`[rank] done: ${gated.length} results (${results.length} before location gate)`);
+    return gated;
   } catch (err) {
     console.error('[rank] error:', err);
-    return fallback(candidates);
+    return fallback(candidates, profile);
   }
 }
 
 // If ranking fails for any reason, return candidates in original order with
-// the search summary standing in for the why-line.
-function fallback(candidates: JobResult[]): RankedResult[] {
+// the search summary standing in for the why-line. Still passes through the
+// location gate — a ranking failure shouldn't bypass it.
+function fallback(candidates: JobResult[], profile: SearchProfile): RankedResult[] {
   console.log('[rank] fallback: returning original order with summary as why');
-  return candidates.map((c) => ({
+  const results = candidates.map((c) => ({
     company: c.company,
     title: c.title,
     why: c.summary,
@@ -162,6 +212,7 @@ function fallback(candidates: JobResult[]): RankedResult[] {
     location: c.location,
     job_identity: c.job_identity,
   }));
+  return applyLocationGate(results, profile);
 }
 
 function parseJsonArray(text: string): Array<{ index: number; why: string }> | null {
