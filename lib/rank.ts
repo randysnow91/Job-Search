@@ -61,22 +61,24 @@ CANDIDATE PROFILE:
 - Location: ${locationDesc}${profile.filters.min_pay ? `\n- Minimum pay: $${profile.filters.min_pay.toLocaleString()}` : ''}
 
 RECALL-FIRST RULES (critical — read before ranking):
-1. Hard gate — drop a job ONLY if location is genuinely incompatible: ${locationGateRule}. If a posting's location isn't stated ("not stated" above), do not drop it on location grounds alone. A mismatched title is NEVER a reason to drop a job.
+1. Hard gate — MANDATORY FULL EXCLUSION, not a ranking factor. If ${locationGateRule}, you MUST completely omit that job from your output — do not include it, do not rank it last, do not include it as a "stretch." No amount of title match, salary, or seniority justifies including a job that fails this gate; that tradeoff belongs to rule 3 below, not this one. If a posting's location isn't stated ("not stated" above), do NOT drop it on location grounds alone — the gate only applies when the posting's location is known and incompatible. A mismatched title is NEVER a reason to drop a job.
+   Example: profile requires "remote or in St. Louis, Missouri"; a posting is on-site only in Irving, TX with no remote option offered → omit this job entirely from the output, even if the title and skills are a perfect match.
 2. Light relevance floor — drop only jobs that are clearly unrelated to the candidate's field (e.g. a nursing role in a software engineering search). When in doubt, keep it.
-3. A stretch role — wrong title but matching skills — MUST appear in results. Do NOT bury it at the bottom. Over-demoting a good stretch is as bad as dropping it.
+3. A stretch role — wrong title but matching skills, or a location that passed the hard gate but isn't the candidate's top preference — MUST appear in results. Do NOT bury it at the bottom. Over-demoting a good stretch is as bad as dropping it. This does not apply to jobs that fail rule 1 — those are excluded outright, never treated as a "stretch."
 
-RANKING ORDER (judgment, not a numeric score):
+RANKING ORDER (judgment, not a numeric score — applies only to candidates that already passed the hard gate in rule 1):
 1. Position fit — how closely the role matches the candidate's listed positions, in preference order
 2. Industry relevance — how well the employer's domain matches the candidate's industry
 3. Skill overlap — how many of the candidate's keywords this role requires
 4. Overall usefulness — is this genuinely worth applying to?
-5. Location fit — remote preferred if the candidate requires or prefers remote
+5. Location fit — among jobs that already passed the hard gate, remote is preferred if the candidate requires or prefers remote
 
 WHY-LINE (required for every result, 1–2 sentences):
 - Explain why this role was included and why it sits at this rank.
 - Strong fit: name what makes it a strong match.
 - Stretch fit: be honest — name the stretch AND why it still belongs. Example: "Stretch on title — posted as 'Data Analyst' but the responsibilities include Python and ML modeling that match your skills; ranked mid-list because the title gap is real but the day-to-day work looks right."
 - Never write a generic line like "This role matches your profile." Be specific.
+- Self-check before finalizing: if a why-line you're about to write describes a job's location as a "hard miss," "incompatible," "hard gate," or similar — that job fails rule 1 and must NOT be in your output. Remove it instead of explaining why you kept it anyway.
 
 CANDIDATES TO RANK:
 ${candidateList}
