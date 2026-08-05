@@ -5,6 +5,7 @@ export interface JobResult {
   salary: string | null;
   source: string;
   link: string;
+  location: string; // the posting's actual stated location (city/state or "Remote") — not the candidate's requested location
   job_identity?: string; // set by deduplicateResults() before results are saved
 }
 
@@ -16,6 +17,7 @@ export interface RankedResult {
   salary: string | null;
   source: string;
   link: string;
+  location: string;
   job_identity?: string;
 }
 

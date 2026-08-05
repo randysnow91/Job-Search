@@ -145,7 +145,9 @@ async function runSearchInBackground(
         title: job.title,
         why: job.why,
         salary: job.salary,
-        location_display: locationDisplay,
+        // Prefer the posting's own stated location; fall back to the profile's
+        // target-location description if the model didn't report one.
+        location_display: job.location?.trim() ? job.location : locationDisplay,
         source: job.source,
         link: job.link,
         rank: index + 1,

@@ -45,7 +45,7 @@ ${verificationInstructions}
 After each batch of searches, output any job results found so far as a raw JSON array — even if you plan to keep searching. In later turns, output the full updated list. This ensures results are captured even if the search stops early.
 
 Format (no markdown fences, no surrounding text):
-[{"company":"...","title":"...","summary":"One or two sentence description of the role","salary":"$X–$Y or null if not listed","source":"LinkedIn / Company careers / etc","link":"https://..."}]
+[{"company":"...","title":"...","summary":"One or two sentence description of the role","salary":"$X–$Y or null if not listed","source":"LinkedIn / Company careers / etc","link":"https://...","location":"The posting's actual stated location, e.g. 'Irving, TX' or 'Remote' or 'Remote (US)' — report what the posting itself says, even if it doesn't match what the user asked for"}]
 
 Only include postings that have real, reachable URLs.`;
 
