@@ -64,6 +64,12 @@ export default function ResultCard({ result, initialExcluded, initialReason, ini
             <span>{result.salary ?? 'No salary listed'}</span>
             {result.location_display && <span>{result.location_display}</span>}
             {result.source && <span>{result.source}</span>}
+            {result.verification_status === 'open' && <span>Open</span>}
+            {result.verification_status === 'unverified' && (
+              <span className="text-amber-600" title="We couldn't confirm this posting is still open — check it before applying.">
+                Unverified
+              </span>
+            )}
           </div>
         </div>
 

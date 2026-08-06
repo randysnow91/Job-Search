@@ -153,6 +153,9 @@ async function runSearchInBackground(
         rank: index + 1,
         job_identity: job.job_identity ?? job.link,
         status: 'in_report',
+        // null when validate_jobs was off — verification never ran, so there's
+        // nothing to report and the UI shows no badge at all.
+        verification_status: job.verification_status ?? null,
       }));
 
       const { error: resultsError } = await supabase.from('results').insert(rows);
