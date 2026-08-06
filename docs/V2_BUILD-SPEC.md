@@ -1,6 +1,6 @@
 # Claude Code Build Spec — Job Search Agent V2
 
-**Status:** v1.9 — M1 code-complete and live in production; a second round of real-world staging testing surfaced seven further bugs plus one UX addition, all fixed/built and merged to `staging` but **not yet merged to `main`/production** — see §3.1.5  
+**Status:** v1.9 — M1 fully complete and live in production, including all post-launch hardening (seven bugs plus one UX addition found via staging testing) — see §3.1.5. Diagnostic logging deliberately kept on through M2. **M2 requirements gathering starting now.**  
 **Derived from:** `V1_BUILD-SPEC.md` (V1, completed) and `PRD.md` (product requirements)  
 **Audience:** Claude Code (the coding agent) + the builder (product owner)
 
@@ -234,7 +234,7 @@ M1 shipped to production per v1.5 above. A second round of real-world staging te
 
 8. **Verification outcome surfaced in the report ("Open" / "Unverified").** Items 3 and 7 both extend M1's recall-first bias to keep jobs the system couldn't fully confirm — but the report gave the user no way to tell an `unverified` survivor apart from a confirmed-`open` one, so a job that turned out to be dead read as a bug rather than a disclosed trade-off. `verifyJobsSequentially()` now stamps its outcome onto each surviving job instead of discarding it once the keep/drop decision is made; it flows through ranking (both the model-ranked and `fallback()` paths) and into a new `results.verification_status` column. `ResultCard.tsx` shows "Open" inline with salary/location/source, or "Unverified" in muted amber with a tooltip, and shows nothing when `validate_jobs` was off (verification never ran). **Requires a manual DB column** (no migration tooling in this repo, same as `validate_jobs` before it): `ALTER TABLE results ADD COLUMN verification_status text CHECK (verification_status IN ('open', 'unverified'));`
 
-**Current state:** all eight items above are on `staging` (items 7–8 pushed to `feature/v2-verification`, bundled PR pending), pending further verification before being bundled into a PR to `main`. Item 2's `[verify][diag]` logging should be removed once it's served its purpose — either the fetch-failure/stale-fetch questions are fully settled, or enough clean runs have passed that it's no longer earning its noise in the logs.
+**Current state:** all eight items above are merged to `main`/production (PR #11, 2026-08-06). Item 2's `[verify][diag]` logging is being kept on deliberately longer than originally planned — not just until the fetch-failure/stale-fetch questions feel settled, but through the rest of M2 (i.e., through the end of V2). Given how many real, previously-invisible bugs this logging surfaced during M1 hardening, the builder decided it's worth keeping the visibility through the next milestone rather than removing it early. Remove once M2 is complete.
 
 ---
 
