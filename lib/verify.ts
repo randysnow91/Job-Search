@@ -19,6 +19,14 @@ const SURVIVAL_THRESHOLD = 0.5;
 // regardless of survival rate.
 const RESEARCH_TIME_RESERVE_MS = 60_000;
 
+// use_cache: false is supposed to guarantee a fresh fetch, but has been observed
+// (via retrieved_at) returning snapshots months old anyway — confirmed again on a
+// Capital One posting where retrieved_at was 8 months stale and the model verified
+// "open" against content that no longer matched the live page (which had since
+// become the closed-posting error page). An OPEN verdict built only on fetches
+// older than this is not trusted — see hadFreshFetch below.
+const STALE_FETCH_THRESHOLD_MS = 48 * 60 * 60 * 1000;
+
 function parseVerdict(text: string): { status: 'open' | 'closed' } | null {
   const trimmed = text.trim();
   try {
@@ -84,6 +92,11 @@ Fetch the URL and determine if this posting is still open.`;
   // failure, instead of silently dropping the job.
   let hadSuccessfulFetch = false;
 
+  // Tracks whether any successful fetch for this job was actually fresh (see
+  // STALE_FETCH_THRESHOLD_MS above). A missing retrieved_at is treated as not
+  // fresh — recall-first means we don't extend trust we can't confirm.
+  let hadFreshFetch = false;
+
   try {
     for (let turn = 0; turn < MAX_VERIFY_TURNS; turn++) {
       // Cast needed: SDK types don't yet reflect the web_fetch_20260318 server-tool shape.
@@ -118,6 +131,8 @@ Fetch the URL and determine if this posting is still open.`;
           continue;
         }
         hadSuccessfulFetch = true;
+        const fetchAgeMs = result.retrieved_at ? Date.now() - new Date(result.retrieved_at).getTime() : Infinity;
+        if (fetchAgeMs <= STALE_FETCH_THRESHOLD_MS) hadFreshFetch = true;
         const source = result.content.source;
         const text = source.type === 'text' ? source.data : `(non-text content: ${source.type})`;
         console.log(
@@ -135,6 +150,12 @@ Fetch the URL and determine if this posting is still open.`;
         if (verdict.status === 'closed' && !hadSuccessfulFetch) {
           console.log(
             `[verify][diag] "${job.title}" @ ${job.company} — overriding CLOSED to UNVERIFIED: verdict was reached without a single successful web_fetch`
+          );
+          return 'unverified';
+        }
+        if (verdict.status === 'open' && !hadFreshFetch) {
+          console.log(
+            `[verify][diag] "${job.title}" @ ${job.company} — overriding OPEN to UNVERIFIED: verdict was reached using only stale or unknown-age web_fetch content (possible cache bypass failure)`
           );
           return 'unverified';
         }
