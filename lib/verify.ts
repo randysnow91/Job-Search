@@ -204,7 +204,7 @@ async function verifyJobsSequentially(
     const remainingMs = timeBudgetMs - (Date.now() - runStartMs);
     if (remainingMs <= 0) {
       console.log('[verify] time budget exhausted mid-pass — keeping remaining jobs unverified');
-      survivors.push(job);
+      survivors.push({ ...job, verification_status: 'unverified' });
       unverifiedCount++;
       continue;
     }
@@ -214,7 +214,7 @@ async function verifyJobsSequentially(
       closedCount++;
       console.log(`[verify] CLOSED: "${job.title}" at ${job.company}`);
     } else {
-      survivors.push(job);
+      survivors.push({ ...job, verification_status: outcome });
       if (outcome === 'open') openCount++;
       else unverifiedCount++;
     }

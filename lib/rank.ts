@@ -179,6 +179,7 @@ Ranked best-fit first. Omit candidates that fail the hard gate.`;
         source: original.source,
         link: original.link,
         location: original.location,
+        verification_status: original.verification_status,
         job_identity: original.job_identity,
       });
     }
@@ -210,6 +211,7 @@ function fallback(candidates: JobResult[], profile: SearchProfile): RankedResult
     source: c.source,
     link: c.link,
     location: c.location,
+    verification_status: c.verification_status,
     job_identity: c.job_identity,
   }));
   return applyLocationGate(results, profile);
