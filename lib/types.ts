@@ -5,6 +5,11 @@ export interface JobResult {
   salary: string | null;
   source: string;
   link: string;
+  location: string; // the posting's actual stated location (city/state or "Remote") — not the candidate's requested location
+  // Set by verifyJobsSequentially() when validate_jobs is on; undefined when
+  // verification didn't run at all. 'closed' jobs never reach this point — they're
+  // filtered out — so only 'open' and 'unverified' are ever seen here.
+  verification_status?: 'open' | 'unverified';
   job_identity?: string; // set by deduplicateResults() before results are saved
 }
 
@@ -16,6 +21,8 @@ export interface RankedResult {
   salary: string | null;
   source: string;
   link: string;
+  location: string;
+  verification_status?: 'open' | 'unverified';
   job_identity?: string;
 }
 
@@ -53,6 +60,7 @@ export interface ReportResult {
   rank: number;
   job_identity: string;
   status: string;
+  verification_status: 'open' | 'unverified' | null;
   created_at: string;
 }
 

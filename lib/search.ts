@@ -45,7 +45,7 @@ ${verificationInstructions}
 After each batch of searches, output any job results found so far as a raw JSON array — even if you plan to keep searching. In later turns, output the full updated list. This ensures results are captured even if the search stops early.
 
 Format (no markdown fences, no surrounding text):
-[{"company":"...","title":"...","summary":"One or two sentence description of the role","salary":"$X–$Y or null if not listed","source":"LinkedIn / Company careers / etc","link":"https://..."}]
+[{"company":"...","title":"...","summary":"One or two sentence description of the role","salary":"$X–$Y or null if not listed","source":"LinkedIn / Company careers / etc","link":"https://...","location":"The posting's actual stated location, e.g. 'Irving, TX' or 'Remote' or 'Remote (US)' — report what the posting itself says, even if it doesn't match what the user asked for"}]
 
 Only include postings that have real, reachable URLs.`;
 
@@ -105,7 +105,7 @@ Search broadly, including smaller and regional employers. Output results as a JS
       const response: Anthropic.Message = await (client.messages as any).create(
         {
           model: SEARCH_MODEL,
-          max_tokens: 4096,
+          max_tokens: 8192,
           ...(THINKING_SUPPORTED ? { thinking: { type: 'adaptive' } } : {}),
           tools: [
             { type: 'web_search_20260209', name: 'web_search' },
@@ -145,7 +145,11 @@ Search broadly, including smaller and regional employers. Output results as a JS
         break;
       }
 
-      if (response.stop_reason === 'pause_turn') {
+      // max_tokens means the turn got cut off mid-generation (observed truncating a
+      // trailing text block on an otherwise-complete turn) rather than the model
+      // finishing naturally — resume it the same way as pause_turn instead of
+      // treating it as a terminal stop.
+      if (response.stop_reason === 'pause_turn' || response.stop_reason === 'max_tokens') {
         messages = [
           ...messages,
           { role: 'assistant', content: response.content },

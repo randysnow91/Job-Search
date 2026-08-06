@@ -145,12 +145,17 @@ async function runSearchInBackground(
         title: job.title,
         why: job.why,
         salary: job.salary,
-        location_display: locationDisplay,
+        // Prefer the posting's own stated location; fall back to the profile's
+        // target-location description if the model didn't report one.
+        location_display: job.location?.trim() ? job.location : locationDisplay,
         source: job.source,
         link: job.link,
         rank: index + 1,
         job_identity: job.job_identity ?? job.link,
         status: 'in_report',
+        // null when validate_jobs was off — verification never ran, so there's
+        // nothing to report and the UI shows no badge at all.
+        verification_status: job.verification_status ?? null,
       }));
 
       const { error: resultsError } = await supabase.from('results').insert(rows);

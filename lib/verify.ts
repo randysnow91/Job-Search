@@ -19,6 +19,14 @@ const SURVIVAL_THRESHOLD = 0.5;
 // regardless of survival rate.
 const RESEARCH_TIME_RESERVE_MS = 60_000;
 
+// use_cache: false is supposed to guarantee a fresh fetch, but has been observed
+// (via retrieved_at) returning snapshots months old anyway — confirmed again on a
+// Capital One posting where retrieved_at was 8 months stale and the model verified
+// "open" against content that no longer matched the live page (which had since
+// become the closed-posting error page). An OPEN verdict built only on fetches
+// older than this is not trusted — see hadFreshFetch below.
+const STALE_FETCH_THRESHOLD_MS = 48 * 60 * 60 * 1000;
+
 function parseVerdict(text: string): { status: 'open' | 'closed' } | null {
   const trimmed = text.trim();
   try {
@@ -75,6 +83,20 @@ Fetch the URL and determine if this posting is still open.`;
 
   let messages: Anthropic.MessageParam[] = [{ role: 'user', content: userPrompt }];
 
+  // Tracks whether web_fetch ever actually reached the page for this job, across all
+  // turns. A CLOSED verdict reached without a single successful fetch means the model
+  // never saw the page at all (blocked, bad URL, transient error) and is reasoning
+  // from "I couldn't confirm it's open" — which its own prompt correctly maps to
+  // CLOSED, but that's a fetch failure, not a confirmed-dead posting. Treated as
+  // 'unverified' below so it matches the same recall-first handling as an API-level
+  // failure, instead of silently dropping the job.
+  let hadSuccessfulFetch = false;
+
+  // Tracks whether any successful fetch for this job was actually fresh (see
+  // STALE_FETCH_THRESHOLD_MS above). A missing retrieved_at is treated as not
+  // fresh — recall-first means we don't extend trust we can't confirm.
+  let hadFreshFetch = false;
+
   try {
     for (let turn = 0; turn < MAX_VERIFY_TURNS; turn++) {
       // Cast needed: SDK types don't yet reflect the web_fetch_20260318 server-tool shape.
@@ -95,9 +117,50 @@ Fetch the URL and determine if this posting is still open.`;
         { signal }
       );
 
+      // Temporary diagnostic logging (added 2026-08-04) — kept on for a few days to
+      // catch a repeat of the Instructure/Lever false-positive: verification judged a
+      // job "open" against a page that was actually a clear 404. These logs capture
+      // what web_fetch actually returned and the model's raw verdict, so a repeat can
+      // be diagnosed instead of just observed. Remove once we're confident this
+      // failure mode is understood or has stopped recurring.
+      for (const block of response.content) {
+        if (block.type !== 'web_fetch_tool_result') continue;
+        const result = block.content;
+        if (result.type === 'web_fetch_tool_result_error') {
+          console.log(`[verify][diag] "${job.title}" @ ${job.company} — web_fetch ERROR (${result.error_code}) for ${job.link}`);
+          continue;
+        }
+        hadSuccessfulFetch = true;
+        const fetchAgeMs = result.retrieved_at ? Date.now() - new Date(result.retrieved_at).getTime() : Infinity;
+        if (fetchAgeMs <= STALE_FETCH_THRESHOLD_MS) hadFreshFetch = true;
+        const source = result.content.source;
+        const text = source.type === 'text' ? source.data : `(non-text content: ${source.type})`;
+        console.log(
+          `[verify][diag] "${job.title}" @ ${job.company} — web_fetch OK, url: ${result.url}, retrieved_at: ${result.retrieved_at}, ${text.length} chars fetched`
+        );
+        console.log(`[verify][diag] fetched content (first 1500 chars):\n${text.slice(0, 1500)}`);
+      }
+
       const textBlocks = response.content.filter((b): b is Anthropic.TextBlock => b.type === 'text');
+      if (textBlocks.length > 0) {
+        console.log(`[verify][diag] "${job.title}" @ ${job.company} — raw model text: ${textBlocks[textBlocks.length - 1].text}`);
+      }
       const verdict = textBlocks.length > 0 ? parseVerdict(textBlocks[textBlocks.length - 1].text) : null;
-      if (verdict) return verdict.status;
+      if (verdict) {
+        if (verdict.status === 'closed' && !hadSuccessfulFetch) {
+          console.log(
+            `[verify][diag] "${job.title}" @ ${job.company} — overriding CLOSED to UNVERIFIED: verdict was reached without a single successful web_fetch`
+          );
+          return 'unverified';
+        }
+        if (verdict.status === 'open' && !hadFreshFetch) {
+          console.log(
+            `[verify][diag] "${job.title}" @ ${job.company} — overriding OPEN to UNVERIFIED: verdict was reached using only stale or unknown-age web_fetch content (possible cache bypass failure)`
+          );
+          return 'unverified';
+        }
+        return verdict.status;
+      }
 
       if (response.stop_reason === 'pause_turn') {
         messages = [
@@ -141,7 +204,7 @@ async function verifyJobsSequentially(
     const remainingMs = timeBudgetMs - (Date.now() - runStartMs);
     if (remainingMs <= 0) {
       console.log('[verify] time budget exhausted mid-pass — keeping remaining jobs unverified');
-      survivors.push(job);
+      survivors.push({ ...job, verification_status: 'unverified' });
       unverifiedCount++;
       continue;
     }
@@ -151,7 +214,7 @@ async function verifyJobsSequentially(
       closedCount++;
       console.log(`[verify] CLOSED: "${job.title}" at ${job.company}`);
     } else {
-      survivors.push(job);
+      survivors.push({ ...job, verification_status: outcome });
       if (outcome === 'open') openCount++;
       else unverifiedCount++;
     }
