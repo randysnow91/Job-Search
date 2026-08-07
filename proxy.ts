@@ -30,15 +30,29 @@ export async function proxy(request: NextRequest) {
   );
 
   // getUser() validates the token against Supabase servers and refreshes if needed.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // A stale/invalid refresh token (e.g. a leftover cookie from an earlier session)
+  // makes this throw rather than resolve with no user — treat that the same as
+  // logged-out instead of crashing the whole request, which previously happened
+  // on every route this proxy covers, including /api/*.
+  let user = null;
+  try {
+    const {
+      data: { user: fetchedUser },
+    } = await supabase.auth.getUser();
+    user = fetchedUser;
+  } catch {
+    // Fall through with user = null, same as a normal logged-out visitor.
+  }
 
   const path = request.nextUrl.pathname;
 
-  // Routes that don't need a session.
+  // Routes that don't need a session. forgot/reset-password must be reachable
+  // while logged out — that's the entire point of the flow — otherwise this
+  // redirect bounces the user straight back to /login before they ever see it.
   const isPublic =
     path === '/login' ||
+    path === '/forgot-password' ||
+    path === '/reset-password' ||
     path.startsWith('/auth/') ||
     path.startsWith('/api/'); // API routes return 401 themselves
 

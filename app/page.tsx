@@ -68,6 +68,7 @@ export default function HomePage() {
           <br />
           Randy
         </p>
+        <p>If you have questions or comments, please email me: randysnow@me.com</p>
       </div>
     </div>
   );
