@@ -1,6 +1,6 @@
 # Claude Code Build Spec — Job Search Agent V2
 
-**Status:** v2.0 — M1 fully complete and live in production, including all post-launch hardening — see §3.1.5. Diagnostic logging deliberately kept on through M2. **M2 (password reset) detailed and ready to build** — see §3.2.  
+**Status:** v2.3 — **V2 is complete.** M1 and M2 are both fully built and live in production. Diagnostic logging (kept on through M2 per the v1.6 plan) has been removed now that it's served its purpose — see §3.1.5 and §3.2.5.  
 **Derived from:** `V1_BUILD-SPEC.md` (V1, completed) and `PRD.md` (product requirements)  
 **Audience:** Claude Code (the coding agent) + the builder (product owner)
 
@@ -17,6 +17,9 @@
 | v1.8    | 2026-08-06 | Post-launch staging fix: reproduced the v1.4 `web_fetch` caching bug despite `use_cache: false` — a Capital One posting verified "open" against an 8-month-stale fetch while the live page was actually its closed-posting error page. An OPEN verdict built without at least one fetch confirmed fresh (`retrieved_at` within 48h) is now downgraded to `unverified` rather than trusted. See §3.1.5. |
 | v1.9    | 2026-08-06 | UX addition: each result now shows its verification outcome ("Open" / "Unverified") in the report, next to salary/location/source, instead of unverified survivors looking identical to confirmed-open jobs. Requires a manual `results.verification_status` column — see §3.1.5 item 8. |
 | v2.0    | 2026-08-06 | M2 detailed: use Supabase's native password reset (`resetPasswordForEmail`/`updateUser`) rather than a custom token system — no new schema, reuses the existing `/auth/callback` code-exchange route. Small bundled addition: "email me" line on the home page. See §3.2. |
+| v2.1    | 2026-08-10 | M2 built and merged to `main`/production: forgot-password → email → reset-password flow, plus two `proxy.ts` bugs found via local testing (missing public-routes allowlist entries; a stale-cookie crash). See §3.2.5. |
+| v2.2    | 2026-08-10 | Production-only bug found post-merge: server-side redirects (`/auth/callback` and both of `proxy.ts`'s) resolved to Render's internal `localhost:10000` address instead of the public domain. Fixed with a shared `lib/publicOrigin.ts` helper trusting `X-Forwarded-Host`/`-Proto`. See §3.2.5. |
+| v2.3    | 2026-08-10 | `[verify][diag]` diagnostic logging removed from `lib/verify.ts` now that M2 (and therefore V2) is complete, per the plan in v1.6 — the fetch-failure and stale-fetch overrides it was added to diagnose are kept; only the console logging is gone. **V2 is fully shipped.** |
 
 > **How to use this document.**
 > V1's BUILD-SPEC describes a completed release. This spec outlines V2 features—building on V1's architecture and stack.
@@ -235,7 +238,7 @@ M1 shipped to production per v1.5 above. A second round of real-world staging te
 
 8. **Verification outcome surfaced in the report ("Open" / "Unverified").** Items 3 and 7 both extend M1's recall-first bias to keep jobs the system couldn't fully confirm — but the report gave the user no way to tell an `unverified` survivor apart from a confirmed-`open` one, so a job that turned out to be dead read as a bug rather than a disclosed trade-off. `verifyJobsSequentially()` now stamps its outcome onto each surviving job instead of discarding it once the keep/drop decision is made; it flows through ranking (both the model-ranked and `fallback()` paths) and into a new `results.verification_status` column. `ResultCard.tsx` shows "Open" inline with salary/location/source, or "Unverified" in muted amber with a tooltip, and shows nothing when `validate_jobs` was off (verification never ran). **Requires a manual DB column** (no migration tooling in this repo, same as `validate_jobs` before it): `ALTER TABLE results ADD COLUMN verification_status text CHECK (verification_status IN ('open', 'unverified'));`
 
-**Current state:** all eight items above are merged to `main`/production (PR #11, 2026-08-06). Item 2's `[verify][diag]` logging is being kept on deliberately longer than originally planned — not just until the fetch-failure/stale-fetch questions feel settled, but through the rest of M2 (i.e., through the end of V2). Given how many real, previously-invisible bugs this logging surfaced during M1 hardening, the builder decided it's worth keeping the visibility through the next milestone rather than removing it early. Remove once M2 is complete.
+**Current state:** all eight items above are merged to `main`/production (PR #11, 2026-08-06). Item 2's `[verify][diag]` logging was deliberately kept on longer than originally planned — through the rest of M2, per the builder's call given how many real, previously-invisible bugs it surfaced during M1 hardening — and was removed 2026-08-10 once M2 (and V2) shipped. The behavior it was added to diagnose (the fetch-failure and stale-fetch overrides, items 3 and 7) is unaffected; only the console logging itself is gone.
 
 ---
 
