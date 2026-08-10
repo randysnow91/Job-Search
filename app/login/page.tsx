@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 
 export default function LoginPage() {
@@ -85,6 +86,14 @@ export default function LoginPage() {
               minLength={6}
               className="mt-1 block w-full rounded border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none"
             />
+            {mode === 'signin' && (
+              <Link
+                href="/forgot-password"
+                className="mt-1 inline-block text-sm underline hover:text-zinc-900"
+              >
+                Forgot password?
+              </Link>
+            )}
           </div>
           <button
             type="submit"

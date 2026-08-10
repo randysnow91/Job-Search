@@ -1,6 +1,6 @@
 # Claude Code Build Spec — Job Search Agent V2
 
-**Status:** v1.9 — M1 fully complete and live in production, including all post-launch hardening (seven bugs plus one UX addition found via staging testing) — see §3.1.5. Diagnostic logging deliberately kept on through M2. **M2 requirements gathering starting now.**  
+**Status:** v2.0 — M1 fully complete and live in production, including all post-launch hardening — see §3.1.5. Diagnostic logging deliberately kept on through M2. **M2 (password reset) detailed and ready to build** — see §3.2.  
 **Derived from:** `V1_BUILD-SPEC.md` (V1, completed) and `PRD.md` (product requirements)  
 **Audience:** Claude Code (the coding agent) + the builder (product owner)
 
@@ -16,6 +16,7 @@
 | v1.7    | 2026-08-05 | Post-launch staging fixes: ranking call now has a 60s timeout (was unbounded, could hang a run indefinitely); jobs now carry their actual posted location end to end; ranking's location hard gate strengthened in the prompt, then — after prompt-only enforcement failed twice — backed by a deterministic code-level filter. See §3.1.5. |
 | v1.8    | 2026-08-06 | Post-launch staging fix: reproduced the v1.4 `web_fetch` caching bug despite `use_cache: false` — a Capital One posting verified "open" against an 8-month-stale fetch while the live page was actually its closed-posting error page. An OPEN verdict built without at least one fetch confirmed fresh (`retrieved_at` within 48h) is now downgraded to `unverified` rather than trusted. See §3.1.5. |
 | v1.9    | 2026-08-06 | UX addition: each result now shows its verification outcome ("Open" / "Unverified") in the report, next to salary/location/source, instead of unverified survivors looking identical to confirmed-open jobs. Requires a manual `results.verification_status` column — see §3.1.5 item 8. |
+| v2.0    | 2026-08-06 | M2 detailed: use Supabase's native password reset (`resetPasswordForEmail`/`updateUser`) rather than a custom token system — no new schema, reuses the existing `/auth/callback` code-exchange route. Small bundled addition: "email me" line on the home page. See §3.2. |
 
 > **How to use this document.**
 > V1's BUILD-SPEC describes a completed release. This spec outlines V2 features—building on V1's architecture and stack.
@@ -241,7 +242,75 @@ M1 shipped to production per v1.5 above. A second round of real-world staging te
 ### 3.2 M2: Password Reset (Account Management Priority)
 **Goal:** Enable users to self-serve reset a forgotten password—the highest-priority item in account management.
 
-**Status:** Not yet detailed. Will be specified once M1 is live.
+**Status:** Detailed, ready to build.
+
+#### 3.2.0 Technical Approach — Supabase Native vs. Custom
+
+**Decision: use Supabase's built-in password reset** (`resetPasswordForEmail` + `updateUser`), not a custom token/email system.
+
+**Why:**
+- No new database schema — Supabase generates, stores, expires (~1hr), and single-use-invalidates the reset token internally. A custom approach would need a token table plus expiry handling built and maintained.
+- Secure by default: `resetPasswordForEmail` never reveals whether an email exists (no user-enumeration leak), and token generation/validation is Supabase's problem, not this app's.
+- Fits the codebase's existing pattern: `app/auth/callback/route.ts` already performs `exchangeCodeForSession(code)` for email confirmation and OAuth. The password-recovery flow reuses that exact mechanism — it only needs to land on a different page afterward, not a parallel implementation.
+- Minimal code: two new pages plus a one-line change to the existing callback route (§3.2.2).
+
+**Trade-offs, accepted:**
+- **Email deliverability**: Supabase's default shared email sender is rate-limited and intended for testing, not production reset volume. Configuring custom SMTP (Resend, Postmark, etc.) in the Supabase dashboard is required for reliable delivery once this ships — a manual dashboard step, not code, and out of scope for this milestone's code changes (see §3.2.4).
+- Email template customization (subject/body, branding) is dashboard-only (Auth → Email Templates), not something this app's code controls.
+- The reset redirect URL must be added to Supabase's Auth → URL Configuration allowlist for both staging and production — another manual dashboard step, same category as the `validate_jobs`/`verification_status` DB columns added by hand during M1.
+
+#### 3.2.1 Scope
+
+1. **"Forgot password?" link** on the login screen (`app/login/page.tsx`), placed near the password field using the same underline-link style already used for the sign-in/sign-up toggle (`<button className="underline hover:text-zinc-900">`). Routes to a new `/forgot-password` page.
+
+2. **New page `app/forgot-password/page.tsx`**: single email field. On submit, calls `supabase.auth.resetPasswordForEmail(email, { redirectTo: '<origin>/auth/callback?next=/reset-password' })`. Always shows the same generic confirmation message ("If an account exists for that email, we've sent a reset link") regardless of whether the email exists — this is what `resetPasswordForEmail` already gives us for free; the UI must not contradict it by showing a different message for a nonexistent email.
+
+3. **`app/auth/callback/route.ts` gets a small addition**: read an optional `next` query param (default `/profiles`, preserving current behavior for email confirmation and OAuth) and redirect there instead of the hardcoded `/profiles`. The password-recovery link passes `next=/reset-password`; every other caller of this route is unaffected.
+
+4. **New page `app/reset-password/page.tsx`**: new-password + confirm-password fields, calls `supabase.auth.updateUser({ password })` using the recovery session already established by the callback route's `exchangeCodeForSession`. On success, redirect to `/` (home) — matching normal sign-in's destination, so "successfully authenticated" means the same landing page regardless of which door the user came through, rather than a special case that only saves one click at the cost of an inconsistent mental model. Handles the case where someone lands here without a valid/active recovery session (expired or already-used link): show an error with a link back to `/forgot-password` rather than a confusing blank form.
+
+5. **Home page addition (small, unrelated to reset — bundled here per the M0 precedent of grouping small UX items into one milestone):** on `app/page.tsx`, immediately after the existing sign-off block —
+   ```tsx
+   <p>
+     All the best,
+     <br />
+     Randy
+   </p>
+   ```
+   add one line: `If you have questions or comments, please email me: randysnow@me.com`. Makes the builder reachable to prospective users/recruiters who sign up.
+
+#### 3.2.2 Technical Details
+- **No new database schema.** This milestone is schema-free (unlike M1's `validate_jobs` column) — Supabase's `auth.users` table already handles password storage/hashing, and reset tokens are managed internally by Supabase Auth, never touching this app's tables.
+- **Existing pieces reused, not duplicated:** the callback route already imports `createServerClient` from `@supabase/ssr` and reads cookies via `next/headers` — the `next`-param change is additive to that existing implementation, not a new auth code path.
+- **Client-side calls, no new API routes needed:** both `resetPasswordForEmail` and `updateUser` are called directly from client components via `createClient()` from `lib/supabase/client.ts`, matching how `app/login/page.tsx` already calls `signInWithPassword`/`signUp` directly — no new `app/api/*` route required for this milestone.
+- **Manual Supabase dashboard steps** (required before this works end-to-end, done once per environment):
+  1. Auth → URL Configuration: add the reset redirect URL (staging and production origins) to the allowed redirect list.
+  2. Auth → Email Templates: optionally customize the "Reset Password" template copy/branding (default template works as-is for an initial ship).
+  3. Auth → SMTP Settings: configure custom SMTP before relying on this for real users — the shared default sender is rate-limited for testing only.
+- **Mobile consideration:** the two new pages are plain forms using the same Tailwind patterns as the existing login page, which is already mobile-tested — no new responsive-design work anticipated, but verify on a phone per §1.1 before marking done.
+
+#### 3.2.3 Definition of Done
+- [ ] "Forgot password?" link appears on the login screen, styled consistently with existing links.
+- [ ] `/forgot-password` accepts an email, calls `resetPasswordForEmail`, and shows the same generic confirmation message whether or not the email exists.
+- [ ] Clicking the emailed reset link lands the user on `/reset-password` (via the callback route's `next` param), not `/profiles`.
+- [ ] `/reset-password` lets the user set a new password via `updateUser`, and a normal `/auth/callback` hit (email confirmation, OAuth) still redirects to `/profiles` as before — the `next`-param change doesn't regress existing flows.
+- [ ] An expired or already-used reset link shows a clear error on `/reset-password` with a path back to `/forgot-password`, not a silently broken form.
+- [ ] Supabase dashboard: redirect URL allowlisted for both staging and production.
+- [ ] Home page (`app/page.tsx`) shows the "email me" line after the existing sign-off.
+- [ ] All changes work on mobile (phone + tablet) and desktop.
+- [ ] Tested locally; staged to staging Render; verified on staging before production.
+- [ ] Commit message: "M2: password reset via Supabase native flow."
+
+#### 3.2.4 Known Constraints
+- **Email deliverability depends on a manual SMTP configuration step** not covered by this milestone's code — until custom SMTP is set up in the Supabase dashboard, reset emails are subject to the shared sender's low rate limit, which is fine for testing but not for real user volume. Flagged, not solved, here.
+- **Password strength/requirements are whatever Supabase's project-level Auth settings already enforce** (this app's signup form currently only enforces `minLength={6}` client-side) — not hardened further in this milestone.
+- **No "change password while logged in" flow** is in scope here — this milestone is specifically the forgot-password/logged-out recovery path. A settings-page password-change feature (if wanted) would be a separate, much smaller addition (just `updateUser` from an authenticated session, no email/token flow at all) — worth noting as a likely-trivial follow-up, not part of M2's definition of done.
+
+#### 3.2.5 Implementation Notes (found during build/local testing)
+- **`proxy.ts` (this app's middleware) blocked the whole feature at first.** It runs on every request and redirects any unauthenticated visit to a non-public route back to `/login`. `/forgot-password` and `/reset-password` were never added to its `isPublic` allowlist — since a user resetting a forgotten password is by definition not logged in, every click on "Forgot password?" silently bounced back to `/login` with no error, and the "this link is invalid or expired" state built into `/reset-password` was unreachable dead code. Fixed by adding both paths to `isPublic`. Worth remembering for any future milestone that adds a logged-out-accessible route — `proxy.ts` needs an explicit update, or it defaults to blocking.
+- **Local testing also surfaced a `proxy.ts` robustness gap — fixed.** `proxy.ts` calls `supabase.auth.getUser()` unconditionally on every request, which silently tries to refresh the session if needed. A stale/invalid refresh-token cookie (e.g., left over from earlier local testing) caused that call to throw (`AuthApiError: Invalid Refresh Token: Refresh Token Not Found`) instead of resolving to "no user," crashing the request before it reached any route handler — not specific to password reset, this could happen on any page load with a stale cookie, including `/api/*` routes. Fixed by wrapping the call in try/catch and treating a thrown error the same as a normal logged-out visitor (`user = null`), reusing the existing, already-exercised redirect-to-login logic rather than inventing new behavior. Deliberately left out of scope: actively clearing the bad cookie when this happens — without it, a stale cookie keeps hitting the catch branch harmlessly on every request until it naturally expires; adding active clearing was considered unnecessary extra surface area for this fix.
+- **Open-redirect protection added to `/auth/callback`'s `next` param**, beyond what §3.2.1 originally specified: since `next` is caller-controlled via the URL, the route only honors it if it's a relative, same-app path (`starts with '/'`, not `'//'`), falling back to `/profiles` otherwise.
+- **Reset-password redirect destination:** built initially to redirect to `/profiles` after a successful reset (reasoning: a user resetting a password is already an existing user, skip the home page they've seen before). Reconsidered after testing — changed to `/` (home), matching normal sign-in's destination, so "successfully authenticated" lands the same place regardless of entry path. The `/profiles`-first reasoning wasn't wrong, just a smaller win (saves one click, since home's only real content is a button straight to Profiles) than the cost of an inconsistent, harder-to-reason-about mental model.
 
 ---
 
