@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
+import { resolvePublicOrigin } from '@/lib/publicOrigin';
 
 export async function proxy(request: NextRequest) {
   // Start with a response that forwards the request unchanged.
@@ -57,16 +58,12 @@ export async function proxy(request: NextRequest) {
     path.startsWith('/api/'); // API routes return 401 themselves
 
   if (!user && !isPublic) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/login';
-    return NextResponse.redirect(url);
+    return NextResponse.redirect(new URL('/login', resolvePublicOrigin(request)));
   }
 
   // Signed-in users don't need the login page — send them to home.
   if (user && path === '/login') {
-    const url = request.nextUrl.clone();
-    url.pathname = '/';
-    return NextResponse.redirect(url);
+    return NextResponse.redirect(new URL('/', resolvePublicOrigin(request)));
   }
 
   return response;
