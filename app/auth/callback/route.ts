@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
+import { resolvePublicOrigin } from '@/lib/publicOrigin';
 
 // Handles the confirmation link Supabase sends for email confirmation, OAuth, and
 // password recovery. `next` lets a caller land somewhere other than /profiles after
@@ -35,5 +36,5 @@ export async function GET(request: NextRequest) {
   // Only allow a relative, same-app path — next is caller-controlled via the URL,
   // so this guards against it being used as an open redirect.
   const safeNext = next.startsWith('/') && !next.startsWith('//') ? next : '/profiles';
-  return NextResponse.redirect(new URL(safeNext, request.url));
+  return NextResponse.redirect(new URL(safeNext, resolvePublicOrigin(request)));
 }
